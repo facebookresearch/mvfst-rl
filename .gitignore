@@ -1,0 +1,10 @@
+# Swap files
+*.sw*
+
+# Build artifacts
+_build/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

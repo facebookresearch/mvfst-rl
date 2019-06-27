@@ -1,0 +1,3 @@
+[submodule "third-party/mvfst"]
+	path = third-party/mvfst
+	url = https://github.com/facebookincubator/mvfst
