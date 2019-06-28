@@ -1,8 +1,7 @@
 #!/bin/bash -eu
 
-SKIP_DEPS=false
-
 # ArgumentParser
+SKIP_DEPS=false
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -21,6 +20,8 @@ BASE_DIR="$PWD"
 MVFST_DIR="$PWD"/third-party/mvfst
 
 if [ "$SKIP_DEPS" = false ]; then
+  echo -e "Installing mvfst"
+
   git submodule update --init --recursive
 
   # Build and install mvfst
@@ -50,12 +51,14 @@ if [ -z "$(hash nproc 2>&1)" ]; then
 fi
 set -x
 
+echo -e "Building mv-rl-fst"
+
 cd "$CMAKE_BUILD_DIR" || exit
 cmake                                       \
   -DCMAKE_PREFIX_PATH="$FOLLY_INSTALL_DIR;$MVFST_INSTALL_DIR" \
- -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"      \
- -DCMAKE_BUILD_TYPE=RelWithDebInfo          \
- -DBUILD_TESTS=On                           \
+  -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"      \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo          \
+  -DBUILD_TESTS=On                           \
   ../..
 make -j "$nproc"
 echo -e "Done building."
