@@ -1,5 +1,7 @@
 #!/bin/bash -eu
 
+# Usage: ./build.sh [--skip-deps]
+
 # ArgumentParser
 SKIP_DEPS=false
 POSITIONAL=()
@@ -7,6 +9,8 @@ while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
     --skip-deps )
+      # If --skip-deps is specified, then we skip re-installing mvfst dependency.
+      # You can specify this after the first build to speed things up.
       SKIP_DEPS=true
       shift;;
     * )    # Unknown option

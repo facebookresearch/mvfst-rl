@@ -1,5 +1,7 @@
 #!/bin/bash -eu
 
+## Usage: ./setup.sh [--force]
+
 # ArgumentParser
 FORCE=false
 POSITIONAL=()
@@ -7,6 +9,9 @@ while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
     --force )
+      # If --force is specified, even if pantheon has already been setup,
+      # it's cleaned up and re-installed. Otherwise, we skip if pantheon dir
+      # already exists.
       FORCE=true
       shift;;
     * )    # Unknown option
