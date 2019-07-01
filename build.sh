@@ -1,39 +1,9 @@
 #!/bin/bash -eu
 
-# Usage: ./build.sh [--skip-deps]
-
-# ArgumentParser
-SKIP_DEPS=false
-POSITIONAL=()
-while [[ $# -gt 0 ]]; do
-  key="$1"
-  case $key in
-    --skip-deps )
-      # If --skip-deps is specified, then we skip re-installing mvfst dependency.
-      # You can specify this after the first build to speed things up.
-      SKIP_DEPS=true
-      shift;;
-    * )    # Unknown option
-      POSITIONAL+=("$1") # Save it in an array for later
-      shift;;
-  esac
-done
-set -- "${POSITIONAL[@]}" # Restore positional parameters
+# Usage: ./build.sh
 
 BASE_DIR="$PWD"
-MVFST_DIR="$PWD"/third-party/mvfst
-
-if [ "$SKIP_DEPS" = false ]; then
-  echo -e "Installing mvfst"
-
-  git submodule update --init --recursive
-
-  # Build and install mvfst
-  cd "$MVFST_DIR" && ./build_helper.sh
-  cd _build/build/ && make install
-  cd "$BASE_DIR"
-fi
-
+MVFST_DIR="$BASE_DIR"/third-party/mvfst
 FOLLY_INSTALL_DIR="$MVFST_DIR"/_build/deps
 MVFST_INSTALL_DIR="$MVFST_DIR"/_build
 
