@@ -67,8 +67,6 @@ setup_torchbeast() {
   # Install PyTorch from wheel
   # TODO (viswanath): Update wheel location and torchbeast submodule
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
-
-  python3 -m pip install gym[atari] gitpython>=2.1 opencv-python
   python3 -m pip install -r requirements.txt
 
   # Manually install grpc. We need this for mv-rl-fst.
