@@ -8,6 +8,7 @@ target_compile_options(
 
 add_dependencies(
   traffic_gen
+  mvfst
   rl_congestion_control
 )
 
@@ -18,5 +19,6 @@ target_include_directories(
 
 target_link_libraries(
   traffic_gen PUBLIC
+  mvfst
   rl_congestion_control
 )

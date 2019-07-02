@@ -70,6 +70,19 @@ setup_torchbeast() {
 
   python3 -m pip install gym[atari] gitpython>=2.1 opencv-python
   python3 -m pip install -r requirements.txt
+
+  # Manually install grpc. We need this for mv-rl-fst.
+  # Note that this gets installed within the conda prefix which needs to be
+  # exported to cmake.
+  conda install -c anaconda protobuf python=3.7
+  ./install_grpc.sh
+
+  # We don't necessarily need to install libtorchbeast (we can get that from
+  # wheel), but setup.py also generates rpcenv protobuf files within
+  # torchbeast/libtorchbeast/ which we need.
+  export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
+  module load NCCL/2.2.13-1-cuda.9.2
+  python3 setup.py build develop
 }
 
 setup_mvfst() {

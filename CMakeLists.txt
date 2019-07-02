@@ -8,6 +8,7 @@ find_package(mvfst)
 
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(QUIC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mvfst)
+set(TORCHBEAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/torchbeast)
 
 list(APPEND
   CMAKE_MODULE_PATH
@@ -67,10 +68,13 @@ endif()
 include_directories(
   ${CMAKE_REQUIRED_INCLUDES}
   ${PROJECT_ROOT}
+  ${CONDA_PREFIX_PATH}/include
+  ${TORCHBEAST_ROOT}/libtorchbeast
 )
 
 link_directories(
   ${REQUIRED_LINK_DIRS}
+  ${CONDA_PREFIX_PATH}/lib
 )
 
 link_libraries(
@@ -79,3 +83,4 @@ link_libraries(
 
 add_subdirectory(traffic_gen)
 add_subdirectory(congestion_control)
+add_subdirectory(third-party)

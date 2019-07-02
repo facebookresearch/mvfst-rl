@@ -27,12 +27,16 @@ set -x
 
 echo -e "Building mv-rl-fst"
 
+CONDA_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+CMAKE_PREFIX_PATH="$FOLLY_INSTALL_DIR;$MVFST_INSTALL_DIR;$CONDA_PREFIX_PATH"
+
 cd "$CMAKE_BUILD_DIR" || exit
-cmake                                       \
-  -DCMAKE_PREFIX_PATH="$FOLLY_INSTALL_DIR;$MVFST_INSTALL_DIR" \
+cmake                                        \
+  -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"   \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"      \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo          \
   -DBUILD_TESTS=On                           \
+  -DCONDA_PREFIX_PATH="$CONDA_PREFIX_PATH"   \
   ../..
 make -j "$nproc"
 echo -e "Done building."
