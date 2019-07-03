@@ -10,6 +10,12 @@ set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(QUIC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mvfst)
 set(TORCHBEAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/torchbeast)
 
+message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
+message(STATUS "QUIC_ROOT: ${QUIC_ROOT}")
+message(STATUS "TORCHBEAST_ROOT: ${TORCHBEAST_ROOT}")
+message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
+message(STATUS "CONDA_PREFIX_PATH: ${CONDA_PREFIX_PATH}")
+
 list(APPEND
   CMAKE_MODULE_PATH
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake
@@ -31,6 +37,8 @@ list(APPEND
   -Werror=bool-compare
   -Woverloaded-virtual
   -Wnon-virtual-dtor
+  # disable noisy stuff
+  -Wno-unused-parameter
 )
 
 # Find GFlags
@@ -65,10 +73,23 @@ if(BUILD_TESTS)
   list(APPEND CMAKE_REQUIRED_LIBRARIES "gtest")
 endif()
 
+# Find include path for pybind11 header files
+execute_process(
+  COMMAND python3 -c "import pybind11; print(pybind11.get_include())"
+  OUTPUT_VARIABLE PYBIND11_INCLUDE_DIR
+  RESULT_VARIABLE ret
+)
+if (ret EQUAL "0")
+  message(STATUS "Found pybind11 includes in ${PYBIND11_INCLUDE_DIR}")
+else()
+  message(FATAL_ERROR "Failed to locate pybind11")
+endif()
+
 include_directories(
-  ${CMAKE_REQUIRED_INCLUDES}
   ${PROJECT_ROOT}
+  ${CMAKE_REQUIRED_INCLUDES}
   ${CONDA_PREFIX_PATH}/include
+  ${PYBIND11_INCLUDE_DIR}
   ${TORCHBEAST_ROOT}/libtorchbeast
 )
 
