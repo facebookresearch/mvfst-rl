@@ -7,11 +7,14 @@
 
 #include <limits>
 
+#include <CongestionControlEnv.h>
+
 namespace quic {
 
 using namespace std::chrono_literals;
 
-class RLCongestionController : public CongestionController {
+class RLCongestionController : public CongestionController,
+                               public CongestionControlEnv::Callback {
  public:
   explicit RLCongestionController(QuicConnectionStateBase& conn);
   void onRemoveBytesFromInflight(uint64_t) override;
@@ -45,9 +48,14 @@ class RLCongestionController : public CongestionController {
   void onPacketAcked(const AckEvent&);
   void onPacketLoss(const LossEvent&);
 
+  // CongestionControlEnv::Callback
+  void onUpdate(const CongestionControlEnv::Action& action) noexcept override;
+
   QuicConnectionStateBase& conn_;
   uint64_t bytesInFlight_{0};
   uint64_t cwndBytes_;
+
+  std::unique_ptr<CongestionControlEnv> env_;
 
   // Copa-style RTT filters to get more accurate min and standing RTT values.
   WindowedFilter<std::chrono::microseconds,

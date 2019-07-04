@@ -22,6 +22,8 @@ list(APPEND
   ${QUIC_ROOT}/cmake
 )
 
+set(CMAKE_CXX_STANDARD 14)
+
 list(APPEND
   _QUIC_BASE_COMPILE_OPTIONS
   -std=c++14
@@ -73,23 +75,14 @@ if(BUILD_TESTS)
   list(APPEND CMAKE_REQUIRED_LIBRARIES "gtest")
 endif()
 
-# Find include path for pybind11 header files
-execute_process(
-  COMMAND python3 -c "import pybind11; print(pybind11.get_include())"
-  OUTPUT_VARIABLE PYBIND11_INCLUDE_DIR
-  RESULT_VARIABLE ret
-)
-if (ret EQUAL "0")
-  message(STATUS "Found pybind11 includes in ${PYBIND11_INCLUDE_DIR}")
-else()
-  message(FATAL_ERROR "Failed to locate pybind11")
-endif()
+# Find Torch
+find_package(Torch REQUIRED)
+message("SLOG ${TORCH_LIBRARIES}")
 
 include_directories(
   ${PROJECT_ROOT}
   ${CMAKE_REQUIRED_INCLUDES}
   ${CONDA_PREFIX_PATH}/include
-  ${PYBIND11_INCLUDE_DIR}
   ${TORCHBEAST_ROOT}/libtorchbeast
 )
 

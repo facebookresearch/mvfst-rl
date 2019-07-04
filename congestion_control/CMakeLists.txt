@@ -1,6 +1,8 @@
 add_library(
   rl_congestion_control STATIC
   RLCongestionController.cpp
+  CongestionControlEnv.cpp
+  CongestionControlRPCEnv.cpp
 )
 
 target_compile_options(

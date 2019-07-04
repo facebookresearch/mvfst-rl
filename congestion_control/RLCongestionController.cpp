@@ -11,6 +11,7 @@ using namespace std::chrono;
 RLCongestionController::RLCongestionController(QuicConnectionStateBase& conn)
     : conn_(conn),
       cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
+      env_(CongestionControlEnv::make(this)),
       minRTTFilter_(kMinRTTWindowLength.count(), 0us, 0),
       standingRTTFilter_(100000, /*100ms*/
                          0us, 0) {
@@ -114,6 +115,12 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
   }
 
   // TODO (viswanath): env hook
+}
+
+void RLCongestionController::onUpdate(
+    const CongestionControlEnv::Action& action) noexcept {
+  // TODO (viswanath): check evb
+  cwndBytes_ = cwndBytes;
 }
 
 uint64_t RLCongestionController::getWritableBytes() const noexcept {

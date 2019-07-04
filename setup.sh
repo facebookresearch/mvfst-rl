@@ -67,14 +67,12 @@ setup_torchbeast() {
   # Install PyTorch from wheel
   # TODO (viswanath): Update wheel location and torchbeast submodule
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
-
   python3 -m pip install -r requirements.txt
-  conda install pybind11 python=3.7
 
   # Manually install grpc. We need this for mv-rl-fst.
   # Note that this gets installed within the conda prefix which needs to be
   # exported to cmake.
-  conda install -c anaconda protobuf python=3.7
+  conda install -y -c anaconda protobuf python=3.7
   ./install_grpc.sh
 
   # We don't necessarily need to install libtorchbeast (we can get that from
