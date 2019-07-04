@@ -120,7 +120,7 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
 void RLCongestionController::onUpdate(
     const CongestionControlEnv::Action& action) noexcept {
   // TODO (viswanath): check evb
-  cwndBytes_ = cwndBytes;
+  cwndBytes_ = action.cwndBytes;
 }
 
 uint64_t RLCongestionController::getWritableBytes() const noexcept {

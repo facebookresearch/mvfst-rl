@@ -77,7 +77,6 @@ endif()
 
 # Find Torch
 find_package(Torch REQUIRED)
-message("SLOG ${TORCH_LIBRARIES}")
 
 include_directories(
   ${PROJECT_ROOT}

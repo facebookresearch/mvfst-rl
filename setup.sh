@@ -58,6 +58,7 @@ function setup_pantheon() {
   echo -e "Symlinking $PANTHEON_DIR/third_party/mv-rl-fst to $BASE_DIR"
   rm -rf third_party/mv-rl-fst
   ln -sf "$BASE_DIR" third_party/mv-rl-fst
+  echo -e "Done setting up Pantheon"
 }
 
 setup_torchbeast() {
@@ -81,6 +82,7 @@ setup_torchbeast() {
   export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
   module load NCCL/2.2.13-1-cuda.9.2
   python3 setup.py build develop
+  echo -e "Done installing TorchBeast"
 }
 
 setup_mvfst() {
@@ -89,6 +91,7 @@ setup_mvfst() {
   # Build and install mvfst
   cd "$MVFST_DIR" && ./build_helper.sh
   cd _build/build/ && make install
+  echo -e "Done installing mvfst"
 }
 
 if [ ! -d "$PANTHEON_DIR" ] || [ "$FORCE" = true ]; then
