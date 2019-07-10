@@ -25,5 +25,11 @@ target_include_directories(
 target_link_libraries(
   rl_congestion_control PUBLIC
   mvfst
+  ${TORCH_LIBRARIES}
   rpcenv_pb
+)
+
+target_compile_definitions(
+  rl_congestion_control PUBLIC
+  C10_USE_GLOG  # Fix glog compilation issues related to PyTorch and folly
 )

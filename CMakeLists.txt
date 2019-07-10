@@ -75,8 +75,9 @@ if(BUILD_TESTS)
   list(APPEND CMAKE_REQUIRED_LIBRARIES "gtest")
 endif()
 
-# Find Torch
+# Find PyTorch
 find_package(Torch REQUIRED)
+message(STATUS "Found PyTorch libs: ${TORCH_LIBRARIES}")
 
 include_directories(
   ${PROJECT_ROOT}

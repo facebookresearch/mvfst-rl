@@ -72,20 +72,19 @@ class CongestionControlRPCEnv : public CongestionControlEnv,
 
  public:
   // TODO (viswanath): Configure port
-  CongestionControlRPCEnv(CongestionControlEnv::Callback* cob, int port = 60000)
-      : CongestionControlEnv(cob),
-        envServer_(std::make_unique<EnvServer>(this, port)) {
-    envServer_->start();
-  }
-
-  ~CongestionControlRPCEnv() override { envServer_->stop(); }
+  CongestionControlRPCEnv(CongestionControlEnv::Callback* cob,
+                          int port = 60000);
+  ~CongestionControlRPCEnv() override;
 
  private:
+  void onReport(const std::vector<Observation>& observations) override;
+
   grpc::Status StreamingEnv(
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<rpcenv::Step, rpcenv::Action>* stream) override;
 
   std::unique_ptr<EnvServer> envServer_;
+  torch::Tensor tensor_;
 };
 
 }  // namespace quic

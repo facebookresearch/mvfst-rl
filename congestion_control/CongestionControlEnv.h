@@ -1,7 +1,10 @@
 #pragma once
 
 #include <glog/logging.h>
+#include <torch/torch.h>
+
 #include <memory>
+#include <vector>
 
 namespace quic {
 
@@ -12,6 +15,15 @@ class CongestionControlEnv {
     // TODO (viswanath): Add more stuff
     uint64_t rtt;
     uint64_t cwndBytes;
+
+    static const int DIMS = 2;
+
+    torch::Tensor toTensor() const;
+    void toTensor(torch::Tensor& tensor) const;
+
+    static torch::Tensor toTensor(const std::vector<Observation>& observations);
+    static void toTensor(const std::vector<Observation>& observations,
+                         torch::Tensor& tensor);
   };
 
   // Action space
@@ -29,10 +41,11 @@ class CongestionControlEnv {
 
   static std::unique_ptr<CongestionControlEnv> make(Callback* cob);
 
-  // TODO (viswanath): Add timeout / window aggregation
-  void onReport(const Observation& observation);
+  void onObservation(const Observation& observation);
 
  protected:
+  virtual void onReport(const std::vector<Observation>& observations) = 0;
+
   Callback* cob_{nullptr};
 };
 

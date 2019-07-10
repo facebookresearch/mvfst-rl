@@ -26,7 +26,7 @@ done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
 BASE_DIR="$PWD"
-BUILD_DIR=_build
+BUILD_DIR="$BASE_DIR"/_build
 DEPS_DIR="$BUILD_DIR"/deps
 mkdir -p "$DEPS_DIR"
 
@@ -48,16 +48,27 @@ function setup_pantheon() {
     git clone git@github.com:fairinternal/pantheon.git $PANTHEON_DIR
   fi
 
-  echo -e "Setting up Pantheon"
+  echo -e "Installing Pantheon dependencies"
   cd $PANTHEON_DIR
-  ./tools/fetch_submodules.sh
-  ./tools/install_deps.sh
+
+  # Install pantheon deps. Copied from pantheon/tools/install_deps.sh
+  # and modified to explicitly use python2-pip and install location.
+  sudo apt-get -y install mahimahi ntp ntpdate texlive python-pip
+  sudo apt-get -y install debhelper autotools-dev dh-autoreconf iptables \
+                          pkg-config iproute2
+  sudo python2 -m pip install matplotlib numpy tabulate pyyaml
+
+  # Install pantheon tunnel in the conda env.
+  cd third_party/pantheon-tunnel && ./autogen.sh \
+  && ./configure --prefix="$CONDA_PREFIX" \
+  && make -j && sudo make install
 
   # Force-symlink pantheon/third_party/mv-rl-fst to $BASE_DIR
   # to avoid double-building
   echo -e "Symlinking $PANTHEON_DIR/third_party/mv-rl-fst to $BASE_DIR"
-  rm -rf third_party/mv-rl-fst
-  ln -sf "$BASE_DIR" third_party/mv-rl-fst
+  rm -rf $PANTHEON_DIR/third_party/mv-rl-fst
+  ln -sf "$BASE_DIR" $PANTHEON_DIR/third_party/mv-rl-fst
+
   echo -e "Done setting up Pantheon"
 }
 
@@ -82,6 +93,7 @@ setup_torchbeast() {
   export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
   module load NCCL/2.2.13-1-cuda.9.2
   python3 setup.py build develop
+
   echo -e "Done installing TorchBeast"
 }
 
@@ -91,6 +103,7 @@ setup_mvfst() {
   # Build and install mvfst
   cd "$MVFST_DIR" && ./build_helper.sh
   cd _build/build/ && make install
+
   echo -e "Done installing mvfst"
 }
 
