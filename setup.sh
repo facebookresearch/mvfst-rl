@@ -72,13 +72,20 @@ function setup_pantheon() {
   echo -e "Done setting up Pantheon"
 }
 
-setup_torchbeast() {
-  echo -e "Installing TorchBeast"
-  cd $TORCHBEAST_DIR
+setup_pytorch() {
+  echo -e "Installing PyTorch"
+
+  conda install -y mkl mkl-include
 
   # Install PyTorch from wheel
-  # TODO (viswanath): Update wheel location and torchbeast submodule
+  # TODO (viswanath): Add CPU-only option
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
+}
+
+setup_torchbeast() {
+  echo -e "Installing TorchBeast"
+
+  cd $TORCHBEAST_DIR
   python3 -m pip install -r requirements.txt
 
   # Manually install grpc. We need this for mv-rl-fst.
@@ -109,6 +116,7 @@ setup_mvfst() {
 
 if [ ! -d "$PANTHEON_DIR" ] || [ "$FORCE" = true ]; then
   setup_pantheon
+  setup_pytorch
   setup_torchbeast
   setup_mvfst
 else
