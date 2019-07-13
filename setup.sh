@@ -25,16 +25,19 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
+CONDA_PREFIX=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR"/_build
 DEPS_DIR="$BUILD_DIR"/deps
 mkdir -p "$DEPS_DIR"
 
 PANTHEON_DIR="$DEPS_DIR"/pantheon
+LIBTORCH_DIR="$DEPS_DIR"/libtorch
 TORCHBEAST_DIR="$BASE_DIR"/third-party/torchbeast
 MVFST_DIR="$BASE_DIR"/third-party/mvfst
 
-cd $BASE_DIR
+cd "$BASE_DIR"
 git submodule sync && git submodule update --init --recursive
 
 function setup_pantheon() {
@@ -45,11 +48,12 @@ function setup_pantheon() {
   if [ ! -d "$PANTHEON_DIR" ]; then
     echo -e "Cloning Pantheon into $PANTHEON_DIR"
     # TODO (viswanath): Update repo url
-    git clone git@github.com:fairinternal/pantheon.git $PANTHEON_DIR
+    git clone git@github.com:fairinternal/pantheon.git "$PANTHEON_DIR"
   fi
 
   echo -e "Installing Pantheon dependencies"
-  cd $PANTHEON_DIR
+  cd "$PANTHEON_DIR"
+  ./tools/fetch_submodules.sh
 
   # Install pantheon deps. Copied from pantheon/tools/install_deps.sh
   # and modified to explicitly use python2-pip and install location.
@@ -72,26 +76,49 @@ function setup_pantheon() {
   echo -e "Done setting up Pantheon"
 }
 
-setup_pytorch() {
-  echo -e "Installing PyTorch"
+setup_libtorch() {
+  # Install CPU-only build of PyTorch libs so that C++ executables of
+  # mv-rl-fst such as traffic_gen don't need to be unnecessarily linked
+  # with CUDA libs, especially during inference.
+  echo -e "Installing libtorch CPU-only build into $LIBTORCH_DIR"
+  mkdir -p "$LIBTORCH_DIR" && cd "$LIBTORCH_DIR"
 
   conda install -y mkl mkl-include
+  conda install -y numpy ninja pyyaml setuptools cmake cffi typing
 
-  # Install PyTorch from wheel
-  # TODO (viswanath): Add CPU-only option
-  python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
+  # TODO: This is ugly, can we avoid installing from source?
+  # Ideally we would just wget libtorch as in
+  # https://pytorch.org/cppdocs/installing.html, but there seem to be C++ ABI
+  # issues such as https://github.com/pytorch/pytorch/issues/15138.
+  PYTORCH_DIR="$LIBTORCH_DIR/pytorch"
+  if [ ! -d "$PYTORCH_DIR" ]; then
+    echo -e "Clonning PyTorch into $PYTORCH_DIR"
+    git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
+  fi
+  cd "$PYTORCH_DIR"
+  git submodule sync && git submodule update --init --recursive
+  CMAKE_PREFIX_PATH=$CONDA_PREFIX USE_CUDA=0 python3 setup.py install --install-lib="$LIBTORCH_DIR"
+
+  echo -e "Done installing libtorch"
 }
 
 setup_torchbeast() {
   echo -e "Installing TorchBeast"
+  cd "$TORCHBEAST_DIR"
 
-  cd $TORCHBEAST_DIR
+  # TorchBeast requires PyTorch with CUDA. This doesn't conflict the CPU-only
+  # PyTorch libs as the install locations are different.
+  # TODO (viswanath): Update path
+  echo -e "Installing PyTorch with CUDA for TorchBeast"
+  python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
+
   python3 -m pip install -r requirements.txt
 
   # Manually install grpc. We need this for mv-rl-fst.
   # Note that this gets installed within the conda prefix which needs to be
   # exported to cmake.
-  conda install -y -c anaconda protobuf python=3.7
+  echo -e "Installing grpc"
+  conda install -y -c anaconda protobuf
   ./install_grpc.sh
 
   # We don't necessarily need to install libtorchbeast (we can get that from
@@ -116,7 +143,7 @@ setup_mvfst() {
 
 if [ ! -d "$PANTHEON_DIR" ] || [ "$FORCE" = true ]; then
   setup_pantheon
-  setup_pytorch
+  setup_libtorch
   setup_torchbeast
   setup_mvfst
 else

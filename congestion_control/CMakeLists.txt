@@ -31,5 +31,5 @@ target_link_libraries(
 
 target_compile_definitions(
   rl_congestion_control PUBLIC
-  C10_USE_GLOG  # Fix glog compilation issues related to PyTorch and folly
+  C10_USE_GLOG  # Fix glog compilation issues related to PyTorch
 )
