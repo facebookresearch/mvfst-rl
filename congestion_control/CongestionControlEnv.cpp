@@ -11,9 +11,13 @@ std::unique_ptr<CongestionControlEnv> CongestionControlEnv::make(
   return std::make_unique<CongestionControlRPCEnv>(cob);
 }
 
-void CongestionControlEnv::onObservation(const Observation& observation) {
+void CongestionControlEnv::onUpdate(const Observation& observation) {
   // TODO (viswanath): Add timeout / window aggregation
-  onReport({observation});
+  onObservation({observation});
+}
+
+void CongestionControlEnv::onAction(const Action& action) {
+  // TODO (viswanath): impl, callback
 }
 
 torch::Tensor CongestionControlEnv::Observation::toTensor() const {

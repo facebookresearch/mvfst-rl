@@ -126,7 +126,7 @@ setup_torchbeast() {
   # torchbeast/libtorchbeast/ which we need.
   export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
   module load NCCL/2.2.13-1-cuda.9.2
-  python3 setup.py build develop
+  CXX=c++ python3 setup.py build develop
 
   echo -e "Done installing TorchBeast"
 }

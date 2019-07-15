@@ -77,14 +77,22 @@ class CongestionControlRPCEnv : public CongestionControlEnv,
   ~CongestionControlRPCEnv() override;
 
  private:
-  void onReport(const std::vector<Observation>& observations) override;
+  void onObservation(const std::vector<Observation>& observations) override;
 
   grpc::Status StreamingEnv(
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<rpcenv::Step, rpcenv::Action>* stream) override;
 
   std::unique_ptr<EnvServer> envServer_;
-  torch::Tensor tensor_;
+  std::atomic<bool> shutdown_{false}; // Signals termination of env loop
+
+  torch::Tensor tensor_; // Tensor holding observations
+  bool observationReady_{false};
+
+  // CV to protect tensor_ and observationReady_, and signal grpc thread when
+  // observation is ready to be sent.
+  std::condition_variable cv_;
+  std::mutex mutex_;
 };
 
 }  // namespace quic
