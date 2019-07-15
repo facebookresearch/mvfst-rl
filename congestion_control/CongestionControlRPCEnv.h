@@ -83,14 +83,18 @@ class CongestionControlRPCEnv : public CongestionControlEnv,
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<rpcenv::Step, rpcenv::Action>* stream) override;
 
-  std::unique_ptr<EnvServer> envServer_;
-  std::atomic<bool> shutdown_{false}; // Signals termination of env loop
+  static void fillNDArray(rpcenv::NDArray* ndarray,
+                          const torch::Tensor& tensor);
 
-  torch::Tensor tensor_; // Tensor holding observations
+  std::unique_ptr<EnvServer> envServer_;
+  std::atomic<bool> shutdown_{false};  // Signals termination of env loop
+
+  torch::Tensor tensor_;  // Tensor holding observations
+  float reward_;
   bool observationReady_{false};
 
-  // CV to protect tensor_ and observationReady_, and signal grpc thread when
-  // observation is ready to be sent.
+  // CV to protect tensor_, reward_ and observationReady_, and signal grpc
+  // thread when state update is ready to be sent.
   std::condition_variable cv_;
   std::mutex mutex_;
 };

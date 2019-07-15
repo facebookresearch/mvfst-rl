@@ -18,6 +18,11 @@ class CongestionControlEnv {
 
     static const int DIMS = 2;
 
+    inline float reward() const {
+      // TODO (viswanath): impl copa?
+      return 0;
+    }
+
     torch::Tensor toTensor() const;
     void toTensor(torch::Tensor& tensor) const;
 

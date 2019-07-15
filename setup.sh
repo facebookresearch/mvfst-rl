@@ -127,8 +127,10 @@ setup_torchbeast() {
   # We don't necessarily need to install libtorchbeast (we can get that from
   # wheel), but setup.py also generates rpcenv protobuf files within
   # torchbeast/libtorchbeast/ which we need.
+  # Remove previous installation first to make sure all files are overwritten.
+  pip uninstall -y libtorchbeast
   export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
-  CXX=c++ python3 setup.py build develop
+  CXX=c++ python3 setup.py install
 
   echo -e "Done installing TorchBeast"
 }
