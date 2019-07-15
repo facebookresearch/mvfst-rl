@@ -28,12 +28,12 @@ class CongestionControlEnv {
 
   // Action space
   struct Action {
-    uint64_t cwndBytes;
+    int32_t cwndAction;
   };
 
   struct Callback {
     virtual ~Callback() = default;
-    virtual void onUpdate(const Action& action) noexcept = 0;
+    virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
   };
 
   CongestionControlEnv(Callback* cob) : cob_(CHECK_NOTNULL(cob)) {}
@@ -41,11 +41,23 @@ class CongestionControlEnv {
 
   static std::unique_ptr<CongestionControlEnv> make(Callback* cob);
 
-  void onObservation(const Observation& observation);
+  // To be invoked by whoever owns CongestionControlEnv (such as
+  // RLCongestionController) to share Observation updates after every
+  // Ack/Loss event.
+  void onUpdate(const Observation& observation);
 
  protected:
-  virtual void onReport(const std::vector<Observation>& observations) = 0;
+  // onObservation() will be triggered when there are enough state updates to
+  // run the policy and predict an action. Subclasses should implement this
+  // and return the action via onAction() callback, either synchronously or
+  // asynchronously.
+  virtual void onObservation(const std::vector<Observation>& observations) = 0;
 
+  // Callback to be invoked by subclasses when there is an action update
+  // following onObservation().
+  void onAction(const Action& action);
+
+ private:
   Callback* cob_{nullptr};
 };
 

@@ -49,11 +49,11 @@ class RLCongestionController : public CongestionController,
   void onPacketLoss(const LossEvent&);
 
   // CongestionControlEnv::Callback
-  void onUpdate(const CongestionControlEnv::Action& action) noexcept override;
+  void onUpdate(const uint64_t& cwndBytes) noexcept override;
 
   QuicConnectionStateBase& conn_;
   uint64_t bytesInFlight_{0};
-  uint64_t cwndBytes_;
+  std::atomic<uint64_t> cwndBytes_;
 
   std::unique_ptr<CongestionControlEnv> env_;
 

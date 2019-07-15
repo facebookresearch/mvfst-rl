@@ -96,6 +96,7 @@ setup_libtorch() {
     git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
   fi
   cd "$PYTORCH_DIR"
+  git checkout v1.1.0
   git submodule sync && git submodule update --init --recursive
   CMAKE_PREFIX_PATH=$CONDA_PREFIX USE_CUDA=0 python3 setup.py install --install-lib="$LIBTORCH_DIR"
 
@@ -106,8 +107,10 @@ setup_torchbeast() {
   echo -e "Installing TorchBeast"
   cd "$TORCHBEAST_DIR"
 
+  module load NCCL/2.2.13-1-cuda.9.2
+
   # TorchBeast requires PyTorch with CUDA. This doesn't conflict the CPU-only
-  # PyTorch libs as the install locations are different.
+  # libtorch installation as the install locations are different.
   # TODO (viswanath): Update path
   echo -e "Installing PyTorch with CUDA for TorchBeast"
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
@@ -125,8 +128,7 @@ setup_torchbeast() {
   # wheel), but setup.py also generates rpcenv protobuf files within
   # torchbeast/libtorchbeast/ which we need.
   export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
-  module load NCCL/2.2.13-1-cuda.9.2
-  python3 setup.py build develop
+  CXX=c++ python3 setup.py build develop
 
   echo -e "Done installing TorchBeast"
 }
