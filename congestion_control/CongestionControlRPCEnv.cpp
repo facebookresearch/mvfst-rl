@@ -6,9 +6,10 @@ using namespace rpcenv;
 namespace quic {
 
 CongestionControlRPCEnv::CongestionControlRPCEnv(
-    CongestionControlEnv::Callback* cob, int port)
-    : CongestionControlEnv(cob),
-      envServer_(std::make_unique<EnvServer>(this, port)) {
+    const CongestionControlEnv::Config& config,
+    CongestionControlEnv::Callback* cob)
+    : CongestionControlEnv(config, cob),
+      envServer_(std::make_unique<EnvServer>(this, config.rpcPort)) {
   tensor_ = torch::empty({0, Observation::DIMS}, torch::kFloat32);
   envServer_->start();
 }

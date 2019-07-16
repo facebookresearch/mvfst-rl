@@ -8,23 +8,25 @@ namespace quic {
 
 using namespace std::chrono;
 
-RLCongestionController::RLCongestionController(QuicConnectionStateBase& conn)
+RLCongestionController::RLCongestionController(
+    QuicConnectionStateBase& conn,
+    std::shared_ptr<CongestionControlEnvFactory> envFactory)
     : conn_(conn),
       cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
-      env_(CongestionControlEnv::make(this)),
+      env_(envFactory->make(this)),
       minRTTFilter_(kMinRTTWindowLength.count(), 0us, 0),
       standingRTTFilter_(100000, /*100ms*/
                          0us, 0) {
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_ << " "
-           << conn_;
+           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+           << " " << conn_;
 }
 
 void RLCongestionController::onRemoveBytesFromInflight(uint64_t bytes) {
   subtractAndCheckUnderflow(bytesInFlight_, bytes);
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_ << " "
-           << conn_;
+           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+           << " " << conn_;
 }
 
 void RLCongestionController::onPacketSent(const OutstandingPacket& packet) {
@@ -69,8 +71,9 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
 
   VLOG(10) << __func__ << "ack size=" << ack.ackedBytes
            << " num packets acked=" << ack.ackedBytes / conn_.udpSendPacketLen
-           << " writable=" << getWritableBytes() << " cwnd=" << cwndBytes_.load()
-           << " inflight=" << bytesInFlight_ << " rttMin=" << rttMin.count()
+           << " writable=" << getWritableBytes()
+           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+           << " rttMin=" << rttMin.count()
            << " sRTT=" << conn_.lossState.srtt.count()
            << " lRTT=" << conn_.lossState.lrtt.count()
            << " mRTT=" << conn_.lossState.mrtt.count()
@@ -104,14 +107,15 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
 
 void RLCongestionController::onPacketLoss(const LossEvent& loss) {
   VLOG(10) << __func__ << " lostBytes=" << loss.lostBytes
-           << " lostPackets=" << loss.lostPackets << " cwnd=" << cwndBytes_.load()
-           << " inflight=" << bytesInFlight_ << " " << conn_;
+           << " lostPackets=" << loss.lostPackets
+           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+           << " " << conn_;
   DCHECK(loss.largestLostPacketNum.hasValue());
   subtractAndCheckUnderflow(bytesInFlight_, loss.lostBytes);
   if (loss.persistentCongestion) {
     VLOG(10) << __func__ << " writable=" << getWritableBytes()
-             << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_ << " "
-             << conn_;
+             << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+             << " " << conn_;
   }
 
   // TODO (viswanath): env hook

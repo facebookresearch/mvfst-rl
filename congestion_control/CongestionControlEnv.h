@@ -10,6 +10,16 @@ namespace quic {
 
 class CongestionControlEnv {
  public:
+  enum class Type : uint8_t {
+    RPC = 0,
+    None,
+  };
+
+  struct Config {
+    Type type{Type::RPC};
+    uint16_t rpcPort{60000};  // Port for RPCEnv
+  };
+
   // Observation space
   struct Observation {
     // TODO (viswanath): Add more stuff
@@ -41,10 +51,9 @@ class CongestionControlEnv {
     virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
   };
 
-  CongestionControlEnv(Callback* cob) : cob_(CHECK_NOTNULL(cob)) {}
+  CongestionControlEnv(const Config& config, Callback* cob)
+      : config_(config), cob_(CHECK_NOTNULL(cob)) {}
   virtual ~CongestionControlEnv() = default;
-
-  static std::unique_ptr<CongestionControlEnv> make(Callback* cob);
 
   // To be invoked by whoever owns CongestionControlEnv (such as
   // RLCongestionController) to share Observation updates after every
@@ -62,7 +71,7 @@ class CongestionControlEnv {
   // following onObservation().
   void onAction(const Action& action);
 
- private:
+  const Config& config_;
   Callback* cob_{nullptr};
 };
 

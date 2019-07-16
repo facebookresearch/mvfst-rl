@@ -1,15 +1,8 @@
 #include "CongestionControlEnv.h"
-#include "CongestionControlRPCEnv.h"
 
 #include <torch/torch.h>
 
 namespace quic {
-
-std::unique_ptr<CongestionControlEnv> CongestionControlEnv::make(
-    CongestionControlEnv::Callback* cob) {
-  // TODO (viswanath): Add config
-  return std::make_unique<CongestionControlRPCEnv>(cob);
-}
 
 void CongestionControlEnv::onUpdate(const Observation& observation) {
   // TODO (viswanath): Add timeout / window aggregation

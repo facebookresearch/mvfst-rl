@@ -71,9 +71,8 @@ class CongestionControlRPCEnv : public CongestionControlEnv,
   };
 
  public:
-  // TODO (viswanath): Configure port
-  CongestionControlRPCEnv(CongestionControlEnv::Callback* cob,
-                          int port = 60000);
+  CongestionControlRPCEnv(const CongestionControlEnv::Config& config,
+                          CongestionControlEnv::Callback* cob);
   ~CongestionControlRPCEnv() override;
 
  private:

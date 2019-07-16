@@ -7,7 +7,7 @@
 
 #include <limits>
 
-#include <CongestionControlEnv.h>
+#include "CongestionControlEnvFactory.h"
 
 namespace quic {
 
@@ -16,7 +16,10 @@ using namespace std::chrono_literals;
 class RLCongestionController : public CongestionController,
                                public CongestionControlEnv::Callback {
  public:
-  explicit RLCongestionController(QuicConnectionStateBase& conn);
+  RLCongestionController(
+      QuicConnectionStateBase& conn,
+      std::shared_ptr<CongestionControlEnvFactory> envFactory);
+
   void onRemoveBytesFromInflight(uint64_t) override;
   void onPacketSent(const OutstandingPacket& packet) override;
   void onPacketAckOrLoss(folly::Optional<AckEvent>,
