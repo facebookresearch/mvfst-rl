@@ -1,8 +1,11 @@
 #pragma once
 
+#include <folly/io/async/EventBaseManager.h>
+#include <folly/io/async/HHWheelTimer.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -10,14 +13,24 @@ namespace quic {
 
 class CongestionControlEnv {
  public:
-  enum class Type : uint8_t {
-    RPC = 0,
-    None,
+  enum class Mode : uint8_t {
+    TRAIN = 0,
+    TEST,
+  };
+
+  // Type of aggregation to group state updates
+  enum class Aggregation : uint8_t {
+    TIME_WINDOW = 0,  // Group state updates every X ms
+    FIXED_WINDOW,     // Group every Y state updates
+    // TODO: Other kinds of aggregation (like avg/max/ewma)?
   };
 
   struct Config {
-    Type type{Type::RPC};
+    Mode mode{Mode::TRAIN};
     uint16_t rpcPort{60000};  // Port for RPCEnv
+    Aggregation aggregation{Aggregation::TIME_WINDOW};
+    std::chrono::milliseconds windowDuration{500};  // Time window duration
+    uint32_t windowSize{10};                        // Fixed window size
   };
 
   // Observation space
@@ -51,14 +64,13 @@ class CongestionControlEnv {
     virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
   };
 
-  CongestionControlEnv(const Config& config, Callback* cob)
-      : config_(config), cob_(CHECK_NOTNULL(cob)) {}
+  CongestionControlEnv(const Config& config, Callback* cob);
   virtual ~CongestionControlEnv() = default;
 
   // To be invoked by whoever owns CongestionControlEnv (such as
   // RLCongestionController) to share Observation updates after every
   // Ack/Loss event.
-  void onUpdate(const Observation& observation);
+  void onUpdate(Observation&& observation);
 
  protected:
   // onObservation() will be triggered when there are enough state updates to
@@ -72,7 +84,35 @@ class CongestionControlEnv {
   void onAction(const Action& action);
 
   const Config& config_;
+
+ private:
+  class ObservationTimeout : public folly::HHWheelTimer::Callback {
+   public:
+    explicit ObservationTimeout(CongestionControlEnv* env)
+        : env_(CHECK_NOTNULL(env)),
+          evb_(folly::EventBaseManager::get()->getEventBase()) {}
+    ~ObservationTimeout() override = default;
+
+    void schedule(const std::chrono::milliseconds& timeoutMs) noexcept {
+      evb_->timer().scheduleTimeout(this, timeoutMs);
+    }
+
+    void timeoutExpired() noexcept override {
+      env_->observationTimeoutExpired();
+    }
+
+    void callbackCanceled() noexcept override { return; }
+
+   private:
+    CongestionControlEnv* env_;
+    folly::EventBase* evb_;
+  };
+
+  void observationTimeoutExpired() noexcept;
+
   Callback* cob_{nullptr};
+  std::vector<Observation> observations_;
+  ObservationTimeout observationTimeout_;
 };
 
 }  // namespace quic

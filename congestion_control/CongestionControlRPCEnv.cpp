@@ -52,6 +52,7 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
 
     cv_.wait(lock, [&]() -> bool { return (observationReady_ || shutdown_); });
     if (shutdown_) {
+      LOG(INFO) << "StreamingEnv terminating";
       return grpc::Status::OK;
     }
 

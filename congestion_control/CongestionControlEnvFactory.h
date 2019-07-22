@@ -11,11 +11,11 @@ class CongestionControlEnvFactory {
 
   std::unique_ptr<CongestionControlEnv> make(
       CongestionControlEnv::Callback* cob) {
-    switch (config_.type) {
-      case CongestionControlEnv::Type::RPC:
+    switch (config_.mode) {
+      case CongestionControlEnv::Mode::TRAIN:
         return std::make_unique<CongestionControlRPCEnv>(config_, cob);
-      case CongestionControlEnv::Type::None:
-        std::runtime_error("Unsupported CongestionControlEnv::Type in config");
+      case CongestionControlEnv::Mode::TEST:
+        std::runtime_error("Test mode not yet implemented");
         break;
     }
   }

@@ -139,14 +139,14 @@ uint64_t RLCongestionController::getCongestionWindow() const noexcept {
 }
 
 CongestionControlType RLCongestionController::type() const noexcept {
-  // TODO (viswanath): Update mvfst with new cc type. Just return None for now.
+  // TODO: Update mvfst with new cc type. Just return None for now.
   return CongestionControlType::None;
 }
 
 void RLCongestionController::setConnectionEmulation(uint8_t) noexcept {}
 
 bool RLCongestionController::canBePaced() const noexcept {
-  // TODO (viswanath): Think about pacing. Not supported for now.
+  // TODO: Think about pacing. Not supported for now.
   return false;
 }
 

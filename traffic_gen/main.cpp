@@ -15,10 +15,46 @@ DEFINE_int32(port, 6666, "Server port");
 DEFINE_string(mode, "server", "Mode to run in: 'client' or 'server'");
 DEFINE_int32(chunk_size, 64 * 1024, "Chunk size to send at once");
 DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
-DEFINE_string(cc_env_type, "rpc", "Type of CongestionControlEnv for RL cc_algo");
+DEFINE_string(cc_env_mode, "test", "CongestionControlEnv mode for RL cc_algo");
 DEFINE_int32(cc_env_port, 60000, "CongestionControlRPCEnv port for RL cc_algo");
+DEFINE_string(cc_env_agg, "time", "State aggregation type for RL cc_algo");
+DEFINE_int32(cc_env_time_window_ms, 500,
+             "Window duration (ms) for TIME_WINDOW aggregation");
+DEFINE_int32(cc_env_fixed_window_size, 10,
+             "Window size for FIXED_WINDOW aggregation");
 
 using namespace quic::traffic_gen;
+
+std::shared_ptr<quic::CongestionControllerFactory>
+makeRLCongestionControllerFactory() {
+  quic::CongestionControlEnv::Config config;
+
+  if (FLAGS_cc_env_mode == "train") {
+    config.mode = quic::CongestionControlEnv::Mode::TRAIN;
+  } else if (FLAGS_cc_env_mode == "test") {
+    config.mode = quic::CongestionControlEnv::Mode::TEST;
+  } else {
+    LOG(ERROR) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
+    throw std::runtime_error("Unknown cc_env_mode");
+  }
+
+  config.rpcPort = FLAGS_cc_env_port;
+
+  if (FLAGS_cc_env_agg == "time") {
+    config.aggregation = quic::CongestionControlEnv::Aggregation::TIME_WINDOW;
+  } else if (FLAGS_cc_env_agg == "fixed") {
+    config.aggregation = quic::CongestionControlEnv::Aggregation::FIXED_WINDOW;
+  } else {
+    LOG(ERROR) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
+    throw std::runtime_error("Unknown cc_env_agg");
+  }
+  config.windowDuration =
+      std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
+  config.windowSize = FLAGS_cc_env_fixed_window_size;
+
+  auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(config);
+  return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);
+}
 
 int main(int argc, char* argv[]) {
 #if FOLLY_HAVE_LIBGFLAGS
@@ -44,20 +80,7 @@ int main(int argc, char* argv[]) {
   } else if (FLAGS_cc_algo == "rl") {
     // TODO: Update cc_algo type
     cc_algo = quic::CongestionControlType::None;
-
-    quic::CongestionControlEnv::Config config;
-    if (FLAGS_cc_env_type == "rpc") {
-      config.type = quic::CongestionControlEnv::Type::RPC;
-    } else {
-      LOG(ERROR) << "Unknown cc_env_type: " << FLAGS_cc_env_type;
-      return -1;
-    }
-    config.rpcPort = FLAGS_cc_env_port;
-
-    auto envFactory =
-        std::make_shared<quic::CongestionControlEnvFactory>(config);
-    ccFactory =
-        std::make_shared<quic::RLCongestionControllerFactory>(envFactory);
+    ccFactory = makeRLCongestionControllerFactory();
   } else if (FLAGS_cc_algo == "none") {
     cc_algo = quic::CongestionControlType::None;
   } else {
