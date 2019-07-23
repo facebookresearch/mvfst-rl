@@ -26,8 +26,12 @@ void CongestionControlEnv::onUpdate(Observation&& observation) {
   }
 }
 
-void CongestionControlEnv::onAction(const Action& action) {
+void CongestionControlEnv::onAction(const Action& action) const {
   // TODO (viswanath): impl, callback
+}
+
+void CongestionControlEnv::onReset() const {
+  cob_->onReset();
 }
 
 void CongestionControlEnv::observationTimeoutExpired() noexcept {

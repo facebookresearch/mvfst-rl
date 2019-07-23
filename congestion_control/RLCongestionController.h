@@ -53,6 +53,7 @@ class RLCongestionController : public CongestionController,
 
   // CongestionControlEnv::Callback
   void onUpdate(const uint64_t& cwndBytes) noexcept override;
+  void onReset() noexcept override;
 
   QuicConnectionStateBase& conn_;
   uint64_t bytesInFlight_{0};

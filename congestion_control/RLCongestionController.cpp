@@ -122,7 +122,14 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
 }
 
 void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
-  cwndBytes_.store(cwndBytes);
+  cwndBytes_ = cwndBytes;
+}
+
+void RLCongestionController::onReset() noexcept {
+  // Reset to init cwnd
+  cwndBytes_ = conn_.transportSettings.initCwndInMss * conn_.udpSendPacketLen;
+  // TODO (viswanath): Need to flush so that the observations are reset too
+  // given async env?
 }
 
 uint64_t RLCongestionController::getWritableBytes() const noexcept {
