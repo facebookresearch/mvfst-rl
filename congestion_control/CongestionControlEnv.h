@@ -31,6 +31,7 @@ class CongestionControlEnv {
     Aggregation aggregation{Aggregation::TIME_WINDOW};
     std::chrono::milliseconds windowDuration{500};  // Time window duration
     uint32_t windowSize{10};                        // Fixed window size
+    uint32_t stepsPerEpisode{400};  // Reset interval for env during training
   };
 
   // Observation space

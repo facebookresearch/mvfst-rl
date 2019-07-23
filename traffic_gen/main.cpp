@@ -22,6 +22,8 @@ DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");
+DEFINE_int32(cc_env_steps_per_episode, 400,
+             "Number of steps per training episode before the env is reset");
 
 using namespace quic::traffic_gen;
 
@@ -51,6 +53,8 @@ makeRLCongestionControllerFactory() {
   config.windowDuration =
       std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
   config.windowSize = FLAGS_cc_env_fixed_window_size;
+
+  config.stepsPerEpisode = FLAGS_cc_env_steps_per_episode;
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(config);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);
