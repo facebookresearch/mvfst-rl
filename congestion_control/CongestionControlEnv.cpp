@@ -1,24 +1,44 @@
 #include "CongestionControlEnv.h"
-#include "CongestionControlRPCEnv.h"
 
 #include <torch/torch.h>
 
 namespace quic {
 
-std::unique_ptr<CongestionControlEnv> CongestionControlEnv::make(
-    CongestionControlEnv::Callback* cob) {
-  // TODO (viswanath): Add config
-  return std::make_unique<CongestionControlRPCEnv>(cob);
+/// CongestionControlEnv impl
+
+CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob)
+    : config_(config), cob_(CHECK_NOTNULL(cob)), observationTimeout_(this) {
+  observationTimeout_.schedule(config.windowDuration);
 }
 
-void CongestionControlEnv::onUpdate(const Observation& observation) {
-  // TODO (viswanath): Add timeout / window aggregation
-  onObservation({observation});
+void CongestionControlEnv::onUpdate(Observation&& observation) {
+  observations_.emplace_back(std::move(observation));
+  switch (config_.aggregation) {
+    case Aggregation::TIME_WINDOW:
+      DCHECK(observationTimeout_.isScheduled());
+      break;
+    case Aggregation::FIXED_WINDOW:
+      if (observations_.size() == config_.windowSize) {
+        onObservation(observations_);
+        observations_.clear();
+      }
+      break;
+  }
 }
 
 void CongestionControlEnv::onAction(const Action& action) {
   // TODO (viswanath): impl, callback
 }
+
+void CongestionControlEnv::observationTimeoutExpired() noexcept {
+  if (!observations_.empty()) {
+    onObservation(observations_);
+    observations_.clear();
+  }
+  observationTimeout_.schedule(config_.windowDuration);
+}
+
+/// CongestionControlEnv::Observation impl
 
 torch::Tensor CongestionControlEnv::Observation::toTensor() const {
   torch::Tensor tensor;

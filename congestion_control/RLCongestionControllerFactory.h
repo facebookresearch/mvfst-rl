@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "congestion_control/RLCongestionController.h"
+#include "RLCongestionController.h"
 
 namespace quic {
 
@@ -15,13 +15,20 @@ struct QuicConnectionStateBase;
 
 class RLCongestionControllerFactory : public CongestionControllerFactory {
  public:
+  RLCongestionControllerFactory(
+      std::shared_ptr<CongestionControlEnvFactory> envFactory)
+      : envFactory_(CHECK_NOTNULL(envFactory)) {}
+
   ~RLCongestionControllerFactory() override = default;
 
   std::unique_ptr<CongestionController> makeCongestionController(
       QuicConnectionStateBase& conn, CongestionControlType type) {
     LOG(INFO) << "Creating RLCongestionController";
-    return std::make_unique<RLCongestionController>(conn);
+    return std::make_unique<RLCongestionController>(conn, envFactory_);
   }
+
+ private:
+  std::shared_ptr<CongestionControlEnvFactory> envFactory_;
 };
 
 }  // namespace quic
