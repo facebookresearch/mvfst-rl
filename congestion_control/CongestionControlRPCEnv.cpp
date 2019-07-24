@@ -23,6 +23,8 @@ void CongestionControlRPCEnv::onObservation(
     const std::vector<Observation>& observations) {
   float reward = 0;
   for (const auto& observation : observations) {
+    // TODO (viswanath): It's better if the reward is a more intelligent
+    // aggregate over observations.
     reward += observation.reward();
   }
 
@@ -77,6 +79,7 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
       // TODO (viswanath): Observations need to be reset too
     } else {
       episode_step++;
+      // TODO (viswanath): Option to not reset at all
       done = (episode_step == config_.stepsPerEpisode);
     }
 

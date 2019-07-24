@@ -34,13 +34,56 @@ class CongestionControlEnv {
     uint32_t stepsPerEpisode{400};  // Reset interval for env during training
   };
 
-  // Observation space
-  struct Observation {
-    // TODO (viswanath): Add more stuff
-    uint64_t rtt;
-    uint64_t cwndBytes;
+  // Action space
+  struct Action {
+    // This assumes that the policy has a no-op action at index 0
+    int32_t cwndAction{0};
+  };
 
-    static const int DIMS = 2;
+  // Observation space
+  //
+  // NOTE: If fields are added/removed, remember to also update the following:
+  // 1. Observation::DIMS count
+  // 2. Serialization implementation in Observation::toTensor().
+  // 3. Observation::operator<<() implementation.
+  struct Observation {
+    // RTT related
+    float rttMinMs{0.0};
+    float rttStandingMs{0.0};
+    float lrttMs{0.0};
+    float srttMs{0.0};
+    float rttVarMs{0.0};
+    float delayMs{0.0};
+
+    // Bytes related
+    uint64_t cwndBytes{0};
+    uint64_t bytesInFlight{0};
+    uint64_t writableBytes{0};
+    uint64_t bytesSent{0};
+    uint64_t bytesRecvd{0};
+    uint64_t bytesRetransmitted{0};
+
+    // LossState
+    uint32_t ptoCount{0};
+    uint32_t totalPTODelta{0};  // Derived from LossState::totalPTOCount
+    uint32_t rtxCount{0};
+    uint32_t timeoutBasedRtxCount{0};
+
+    // AckEvent
+    uint64_t ackedBytes{0};
+    uint32_t ackedPackets{0};
+    float throughput{0};
+
+    // LossEvent
+    uint64_t lostBytes{0};
+    uint32_t lostPackets{0};
+    bool persistentCongestion{false};
+
+    // Previous action taken
+    struct Action lastAction;
+
+    static const int DIMS = 23;
+    // TODO slog print
 
     inline float reward() const {
       // TODO (viswanath): impl copa?
@@ -53,11 +96,6 @@ class CongestionControlEnv {
     static torch::Tensor toTensor(const std::vector<Observation>& observations);
     static void toTensor(const std::vector<Observation>& observations,
                          torch::Tensor& tensor);
-  };
-
-  // Action space
-  struct Action {
-    int32_t cwndAction;
   };
 
   struct Callback {
@@ -83,8 +121,8 @@ class CongestionControlEnv {
 
   // Callbacks to be invoked by subclasses when there is an update
   // following onObservation().
-  void onAction(const Action& action) const;
-  void onReset() const;
+  void onAction(const Action& action);
+  void onReset();
 
   const Config& config_;
 
@@ -116,6 +154,7 @@ class CongestionControlEnv {
   Callback* cob_{nullptr};
   std::vector<Observation> observations_;
   ObservationTimeout observationTimeout_;
+  Action lastAction_;
 };
 
 }  // namespace quic

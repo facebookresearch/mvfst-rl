@@ -51,7 +51,10 @@ void RLCongestionController::onPacketAckOrLoss(
     onPacketAcked(*ack);
   }
 
-  // TODO (viswanath): env hook
+  // State update to the env
+  CongestionControlEnv::Observation observation;
+  getObservation(ack, loss, observation);
+  env_->onUpdate(std::move(observation));
 }
 
 void RLCongestionController::onPacketAcked(const AckEvent& ack) {
@@ -61,19 +64,16 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
       conn_.lossState.lrtt,
       std::chrono::duration_cast<microseconds>(ack.ackTime.time_since_epoch())
           .count());
-  auto rttMin = minRTTFilter_.GetBest();
   standingRTTFilter_.SetWindowLength(conn_.lossState.srtt.count() / 2);
   standingRTTFilter_.Update(
       conn_.lossState.lrtt,
       std::chrono::duration_cast<microseconds>(ack.ackTime.time_since_epoch())
           .count());
-  auto rttStandingMicroSec = standingRTTFilter_.GetBest().count();
 
   VLOG(10) << __func__ << "ack size=" << ack.ackedBytes
            << " num packets acked=" << ack.ackedBytes / conn_.udpSendPacketLen
            << " writable=" << getWritableBytes()
            << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
-           << " rttMin=" << rttMin.count()
            << " sRTT=" << conn_.lossState.srtt.count()
            << " lRTT=" << conn_.lossState.lrtt.count()
            << " mRTT=" << conn_.lossState.mrtt.count()
@@ -82,27 +82,6 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
            << conn_.flowControlState.sumCurStreamBufferLen
            << " packetsRetransmitted=" << conn_.lossState.rtxCount << " "
            << conn_;
-
-  auto delayInMicroSec =
-      duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count();
-  if (delayInMicroSec < 0) {
-    LOG(ERROR) << __func__
-               << "delay negative, lrtt=" << conn_.lossState.lrtt.count()
-               << " rttMin=" << rttMin.count() << " " << conn_;
-    return;
-  }
-  if (rttStandingMicroSec == 0) {
-    LOG(ERROR) << __func__ << "rttStandingMicroSec zero, lrtt = "
-               << conn_.lossState.lrtt.count() << " rttMin=" << rttMin.count()
-               << " " << conn_;
-    return;
-  }
-
-  VLOG(10) << __func__
-           << " estimated queuing delay microsec =" << delayInMicroSec << " "
-           << conn_;
-
-  // TODO (viswanath): env hook
 }
 
 void RLCongestionController::onPacketLoss(const LossEvent& loss) {
@@ -117,8 +96,6 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
              << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
              << " " << conn_;
   }
-
-  // TODO (viswanath): env hook
 }
 
 void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
@@ -130,6 +107,58 @@ void RLCongestionController::onReset() noexcept {
   cwndBytes_ = conn_.transportSettings.initCwndInMss * conn_.udpSendPacketLen;
   // TODO (viswanath): Need to flush so that the observations are reset too
   // given async env?
+}
+
+void RLCongestionController::getObservation(
+    const folly::Optional<AckEvent>& ack,
+    const folly::Optional<LossEvent>& loss,
+    CongestionControlEnv::Observation& obs) {
+  auto rttMin = minRTTFilter_.GetBest();
+  auto rttStandingUs = standingRTTFilter_.GetBest().count();
+  auto delayUs =
+      duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count();
+
+  obs.rttMinMs = rttMin.count() / 1000.0;
+  obs.rttStandingMs = rttStandingUs / 1000.0;
+  obs.lrttMs = conn_.lossState.lrtt.count() / 1000.0;
+  obs.srttMs = conn_.lossState.srtt.count() / 1000.0;
+  obs.rttVarMs = conn_.lossState.rttvar.count() / 1000.0;
+  obs.delayMs = delayUs / 1000.0;
+
+  obs.cwndBytes = cwndBytes_;
+  obs.bytesInFlight = bytesInFlight_;
+  obs.writableBytes = getWritableBytes();
+  obs.bytesSent = conn_.lossState.totalBytesSent - prevTotalBytesSent_;
+  obs.bytesRecvd = conn_.lossState.totalBytesRecvd - prevTotalBytesRecvd_;
+  obs.bytesRetransmitted =
+      conn_.lossState.totalBytesRetransmitted - prevTotalBytesRetransmitted_;
+
+  obs.ptoCount = conn_.lossState.ptoCount;
+  obs.totalPTODelta = conn_.lossState.totalPTOCount - prevTotalPTOCount_;
+  obs.rtxCount = conn_.lossState.rtxCount - prevRtxCount_;
+  obs.timeoutBasedRtxCount =
+      conn_.lossState.timeoutBasedRtxCount - prevTimeoutBasedRtxCount_;
+
+  if (ack && ack->largestAckedPacket.hasValue()) {
+    obs.ackedBytes = ack->ackedBytes;
+    obs.ackedPackets = ack->ackedPackets.size();
+    // Calculate throughput in bytes per sec
+    obs.throughput = ack->ackedBytes / (obs.rttStandingMs / 1000.0);
+  }
+
+  if (loss) {
+    obs.lostBytes = loss->lostBytes;
+    obs.lostPackets = loss->lostPackets;
+    obs.persistentCongestion = loss->persistentCongestion;
+  }
+
+  // Update prev state values
+  prevTotalBytesSent_ = conn_.lossState.totalBytesSent;
+  prevTotalBytesRecvd_ = conn_.lossState.totalBytesRecvd;
+  prevTotalBytesRetransmitted_ = conn_.lossState.totalBytesRetransmitted;
+  prevTotalPTOCount_ = conn_.lossState.totalPTOCount;
+  prevRtxCount_ = conn_.lossState.rtxCount;
+  prevTimeoutBasedRtxCount_ = conn_.lossState.timeoutBasedRtxCount;
 }
 
 uint64_t RLCongestionController::getWritableBytes() const noexcept {
