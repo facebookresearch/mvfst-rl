@@ -20,12 +20,12 @@ parser.add_argument('--start_port', default=60000, type=int, metavar='P',
 parser.add_argument('--num_servers', default=4, type=int, metavar='N',
                     help='Number of environment servers.')
 
-test_path = path.join(SRC_DIR, PANTHEON_ROOT, 'src', 'experiments', 'test.py')
+test_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
 
 
-def get_args(port):
-    cmd = [test_path, 'local', '--schemes', 'mvfst_rl', '--extra_sender_args',
-                    '--cc_env_port=%d --cc_env_mode=train' % port]
+def get_cmd(port):
+    cmd = [test_path, 'local', '--schemes', 'mvfst_rl',
+                    '--extra_sender_args', '--cc_env_port=%d --cc_env_mode=train' % port]
     return cmd
 
 if __name__ == "__main__":
@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
     processes = []
     for i in range(flags.num_servers):
-        p = subprocess.Popen(get_args(flags.start_port + i))
+        p = subprocess.Popen(get_cmd(flags.start_port + i))
         processes.append(p)
 
     for p in processes:
