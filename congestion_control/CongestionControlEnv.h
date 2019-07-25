@@ -34,68 +34,83 @@ class CongestionControlEnv {
     uint32_t stepsPerEpisode{400};  // Reset interval for env during training
   };
 
-  // Action space
   struct Action {
     // This assumes that the policy has a no-op action at index 0
     int32_t cwndAction{0};
   };
 
-  // Observation space
-  //
-  // NOTE: If fields are added/removed, remember to also update the following:
-  // 1. Observation::DIMS count
-  // 2. Serialization implementation in Observation::toTensor().
-  // 3. Observation::operator<<() implementation.
   struct Observation {
-    // RTT related
-    float rttMinMs{0.0};
-    float rttStandingMs{0.0};
-    float lrttMs{0.0};
-    float srttMs{0.0};
-    float rttVarMs{0.0};
-    float delayMs{0.0};
+   public:
+    enum class Field : uint16_t {
+      // RTT related
+      RTT_MIN_MS = 0,
+      RTT_STANDING_MS,
+      LRTT_MS,
+      SRTT_MS,
+      RTT_VAR_MS,
+      DELAY_MS,
 
-    // Bytes related
-    uint64_t cwndBytes{0};
-    uint64_t bytesInFlight{0};
-    uint64_t writableBytes{0};
-    uint64_t bytesSent{0};
-    uint64_t bytesRecvd{0};
-    uint64_t bytesRetransmitted{0};
+      // Bytes related
+      CWND_BYTES,
+      BYTES_IN_FLIGHT,
+      WRITABLE_BYTES,
+      BYTES_SENT,
+      BYTES_RECEIVED,
+      BYTES_RETRANSMITTED,
 
-    // LossState
-    uint32_t ptoCount{0};
-    uint32_t totalPTODelta{0};  // Derived from LossState::totalPTOCount
-    uint32_t rtxCount{0};
-    uint32_t timeoutBasedRtxCount{0};
+      // LossState
+      PTO_COUNT,
+      TOTAL_PTO_DELTA,  // Derived from LossState::totalPTOCount
+      RTX_COUNT,
+      TIMEOUT_BASED_RTX_COUNT,
 
-    // AckEvent
-    uint64_t ackedBytes{0};
-    uint32_t ackedPackets{0};
-    float throughput{0};
+      // AckEvent
+      ACKED_BYTES,
+      ACKED_PACKETS,
+      THROUGHPUT,
 
-    // LossEvent
-    uint64_t lostBytes{0};
-    uint32_t lostPackets{0};
-    bool persistentCongestion{false};
+      // LossEvent
+      LOST_BYTES,
+      LOST_PACKETS,
+      PERSISTENT_CONGESTION,
 
-    // Previous action taken
-    struct Action lastAction;
+      // Previous action taken
+      PREV_CWND_ACTION,
 
-    static const int DIMS = 23;
-    // TODO slog print
+      // Total number of fields
+      NUM_FIELDS
+    };
 
-    inline float reward() const {
-      // TODO (viswanath): impl copa?
-      return 0;
+    static constexpr uint16_t NUM_FIELDS =
+        static_cast<uint16_t>(Field::NUM_FIELDS);
+
+    Observation() : data_(NUM_FIELDS, 0.0) {}
+
+    inline float operator[](int idx) const { return data_[idx]; }
+    inline float& operator[](int idx) { return data_[idx]; }
+    inline float operator[](Field field) const {
+      return data_[static_cast<int>(field)];
     }
+    inline float& operator[](Field field) {
+      return data_[static_cast<int>(field)];
+    }
+
+    inline const float* data() const { return data_.data(); }
+
+    inline void setField(const Field field, const float& value) {
+      data_[static_cast<int>(field)] = value;
+    }
+
+    static float reward(const std::vector<Observation>& observations);
 
     torch::Tensor toTensor() const;
     void toTensor(torch::Tensor& tensor) const;
-
     static torch::Tensor toTensor(const std::vector<Observation>& observations);
     static void toTensor(const std::vector<Observation>& observations,
                          torch::Tensor& tensor);
+
+   private:
+    std::vector<float> data_;
   };
 
   struct Callback {
@@ -154,7 +169,7 @@ class CongestionControlEnv {
   Callback* cob_{nullptr};
   std::vector<Observation> observations_;
   ObservationTimeout observationTimeout_;
-  Action lastAction_;
+  Action prevAction_;
 };
 
 }  // namespace quic

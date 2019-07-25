@@ -8,6 +8,9 @@ namespace quic {
 
 using namespace std::chrono;
 
+using Observation = CongestionControlEnv::Observation;
+using Field = CongestionControlEnv::Observation::Field;
+
 RLCongestionController::RLCongestionController(
     QuicConnectionStateBase& conn,
     std::shared_ptr<CongestionControlEnvFactory> envFactory)
@@ -52,8 +55,8 @@ void RLCongestionController::onPacketAckOrLoss(
   }
 
   // State update to the env
-  CongestionControlEnv::Observation observation;
-  getObservation(ack, loss, observation);
+  Observation observation;
+  setObservation(ack, loss, observation);
   env_->onUpdate(std::move(observation));
 }
 
@@ -109,47 +112,50 @@ void RLCongestionController::onReset() noexcept {
   // given async env?
 }
 
-void RLCongestionController::getObservation(
+void RLCongestionController::setObservation(
     const folly::Optional<AckEvent>& ack,
-    const folly::Optional<LossEvent>& loss,
-    CongestionControlEnv::Observation& obs) {
-  auto rttMin = minRTTFilter_.GetBest();
-  auto rttStandingUs = standingRTTFilter_.GetBest().count();
-  auto delayUs =
-      duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count();
+    const folly::Optional<LossEvent>& loss, Observation& obs) {
+  const auto& rttMin = minRTTFilter_.GetBest();
+  const float rttMinMs = rttMin.count() / 1000.0;
+  const float rttStandingMs = standingRTTFilter_.GetBest().count() / 1000.0;
+  const float delayMs =
+      duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count() /
+      1000.0;
 
-  obs.rttMinMs = rttMin.count() / 1000.0;
-  obs.rttStandingMs = rttStandingUs / 1000.0;
-  obs.lrttMs = conn_.lossState.lrtt.count() / 1000.0;
-  obs.srttMs = conn_.lossState.srtt.count() / 1000.0;
-  obs.rttVarMs = conn_.lossState.rttvar.count() / 1000.0;
-  obs.delayMs = delayUs / 1000.0;
+  obs[Field::RTT_MIN_MS] = rttMinMs;
+  obs[Field::RTT_STANDING_MS] = rttStandingMs;
+  obs[Field::LRTT_MS] = conn_.lossState.lrtt.count() / 1000.0;
+  obs[Field::SRTT_MS] = conn_.lossState.srtt.count() / 1000.0;
+  obs[Field::RTT_VAR_MS] = conn_.lossState.rttvar.count() / 1000.0;
+  obs[Field::DELAY_MS] = delayMs;
 
-  obs.cwndBytes = cwndBytes_;
-  obs.bytesInFlight = bytesInFlight_;
-  obs.writableBytes = getWritableBytes();
-  obs.bytesSent = conn_.lossState.totalBytesSent - prevTotalBytesSent_;
-  obs.bytesRecvd = conn_.lossState.totalBytesRecvd - prevTotalBytesRecvd_;
-  obs.bytesRetransmitted =
+  obs[Field::CWND_BYTES] = cwndBytes_;
+  obs[Field::BYTES_IN_FLIGHT] = bytesInFlight_;
+  obs[Field::WRITABLE_BYTES] = getWritableBytes();
+  obs[Field::BYTES_SENT] = conn_.lossState.totalBytesSent - prevTotalBytesSent_;
+  obs[Field::BYTES_RECEIVED] =
+      conn_.lossState.totalBytesRecvd - prevTotalBytesRecvd_;
+  obs[Field::BYTES_RETRANSMITTED] =
       conn_.lossState.totalBytesRetransmitted - prevTotalBytesRetransmitted_;
 
-  obs.ptoCount = conn_.lossState.ptoCount;
-  obs.totalPTODelta = conn_.lossState.totalPTOCount - prevTotalPTOCount_;
-  obs.rtxCount = conn_.lossState.rtxCount - prevRtxCount_;
-  obs.timeoutBasedRtxCount =
+  obs[Field::PTO_COUNT] = conn_.lossState.ptoCount;
+  obs[Field::TOTAL_PTO_DELTA] =
+      conn_.lossState.totalPTOCount - prevTotalPTOCount_;
+  obs[Field::RTX_COUNT] = conn_.lossState.rtxCount - prevRtxCount_;
+  obs[Field::TIMEOUT_BASED_RTX_COUNT] =
       conn_.lossState.timeoutBasedRtxCount - prevTimeoutBasedRtxCount_;
 
   if (ack && ack->largestAckedPacket.hasValue()) {
-    obs.ackedBytes = ack->ackedBytes;
-    obs.ackedPackets = ack->ackedPackets.size();
+    obs[Field::ACKED_BYTES] = ack->ackedBytes;
+    obs[Field::ACKED_PACKETS] = ack->ackedPackets.size();
     // Calculate throughput in bytes per sec
-    obs.throughput = ack->ackedBytes / (obs.rttStandingMs / 1000.0);
+    obs[Field::THROUGHPUT] = ack->ackedBytes * 1000.0 / rttStandingMs;
   }
 
   if (loss) {
-    obs.lostBytes = loss->lostBytes;
-    obs.lostPackets = loss->lostPackets;
-    obs.persistentCongestion = loss->persistentCongestion;
+    obs[Field::LOST_BYTES] = loss->lostBytes;
+    obs[Field::LOST_PACKETS] = loss->lostPackets;
+    obs[Field::PERSISTENT_CONGESTION] = loss->persistentCongestion;
   }
 
   // Update prev state values

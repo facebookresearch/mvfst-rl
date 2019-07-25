@@ -10,7 +10,7 @@ CongestionControlRPCEnv::CongestionControlRPCEnv(
     CongestionControlEnv::Callback* cob)
     : CongestionControlEnv(config, cob),
       envServer_(std::make_unique<EnvServer>(this, config.rpcPort)) {
-  tensor_ = torch::empty({0, Observation::DIMS}, torch::kFloat32);
+  tensor_ = torch::empty({0, Observation::NUM_FIELDS}, torch::kFloat32);
   envServer_->start();
 }
 
@@ -21,13 +21,7 @@ CongestionControlRPCEnv::~CongestionControlRPCEnv() {
 
 void CongestionControlRPCEnv::onObservation(
     const std::vector<Observation>& observations) {
-  float reward = 0;
-  for (const auto& observation : observations) {
-    // TODO (viswanath): It's better if the reward is a more intelligent
-    // aggregate over observations.
-    reward += observation.reward();
-  }
-
+  float reward = Observation::reward(observations);
   {
     std::lock_guard<std::mutex> g(mutex_);
     Observation::toTensor(observations, tensor_);
