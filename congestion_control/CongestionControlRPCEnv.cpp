@@ -10,7 +10,7 @@ CongestionControlRPCEnv::CongestionControlRPCEnv(
     CongestionControlEnv::Callback* cob)
     : CongestionControlEnv(config, cob),
       envServer_(std::make_unique<EnvServer>(this, config.rpcPort)) {
-  tensor_ = torch::empty({0, Observation::NUM_FIELDS}, torch::kFloat32);
+  tensor_ = torch::empty({0, Observation::kNumFields}, torch::kFloat32);
   envServer_->start();
 }
 

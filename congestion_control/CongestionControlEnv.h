@@ -41,6 +41,9 @@ class CongestionControlEnv {
 
   struct Observation {
    public:
+    // NOTE: If fields are added, make sure to update fieldsToString() as well.
+    // TODO (viswanath): Analyze logs and update fields to get them to somewhat
+    // similar scales (packets vs bytes, etc)
     enum class Field : uint16_t {
       // RTT related
       RTT_MIN_MS = 0,
@@ -81,21 +84,22 @@ class CongestionControlEnv {
       NUM_FIELDS
     };
 
-    static constexpr uint16_t NUM_FIELDS =
+    static constexpr uint16_t kNumFields =
         static_cast<uint16_t>(Field::NUM_FIELDS);
 
-    Observation() : data_(NUM_FIELDS, 0.0) {}
+    Observation() : data_(kNumFields, 0.0) {}
+
+    inline const float* data() const { return data_.data(); }
+    inline constexpr uint16_t size() const { return kNumFields; }
 
     inline float operator[](int idx) const { return data_[idx]; }
-    inline float& operator[](int idx) { return data_[idx]; }
     inline float operator[](Field field) const {
       return data_[static_cast<int>(field)];
     }
+    inline float& operator[](int idx) { return data_[idx]; }
     inline float& operator[](Field field) {
       return data_[static_cast<int>(field)];
     }
-
-    inline const float* data() const { return data_.data(); }
 
     inline void setField(const Field field, const float& value) {
       data_[static_cast<int>(field)] = value;
@@ -108,6 +112,9 @@ class CongestionControlEnv {
     static torch::Tensor toTensor(const std::vector<Observation>& observations);
     static void toTensor(const std::vector<Observation>& observations,
                          torch::Tensor& tensor);
+
+    static std::string fieldToString(const uint16_t field);
+    static std::string fieldToString(const Field field);
 
    private:
     std::vector<float> data_;
@@ -171,5 +178,8 @@ class CongestionControlEnv {
   ObservationTimeout observationTimeout_;
   Action prevAction_;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const CongestionControlEnv::Observation& observation);
 
 }  // namespace quic
