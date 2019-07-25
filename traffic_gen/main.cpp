@@ -36,8 +36,7 @@ makeRLCongestionControllerFactory() {
   } else if (FLAGS_cc_env_mode == "test") {
     config.mode = quic::CongestionControlEnv::Mode::TEST;
   } else {
-    LOG(ERROR) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
-    throw std::runtime_error("Unknown cc_env_mode");
+    LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
 
   config.rpcPort = FLAGS_cc_env_port;
@@ -47,8 +46,7 @@ makeRLCongestionControllerFactory() {
   } else if (FLAGS_cc_env_agg == "fixed") {
     config.aggregation = quic::CongestionControlEnv::Aggregation::FIXED_WINDOW;
   } else {
-    LOG(ERROR) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
-    throw std::runtime_error("Unknown cc_env_agg");
+    LOG(FATAL) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
   }
   config.windowDuration =
       std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);

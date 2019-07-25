@@ -79,7 +79,7 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
 
     stream->Write(step_pb);
     if (!stream->Read(&action_pb)) {
-      throw std::runtime_error("Read failed in StreamingEnv");
+      LOG(FATAL) << "Read failed in StreamingEnv";
     }
     action.cwndAction = action_pb.action();
     onAction(action);
