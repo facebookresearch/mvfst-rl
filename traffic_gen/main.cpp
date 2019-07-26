@@ -22,8 +22,9 @@ DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");
-DEFINE_int32(cc_env_steps_per_episode, 400,
-             "Number of steps per training episode before the env is reset");
+DEFINE_int32(cc_env_steps_per_episode, 0,
+             "Number of steps per training episode before the env is reset "
+             "(0 for non-episodic training)");
 
 using namespace quic::traffic_gen;
 

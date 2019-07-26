@@ -28,10 +28,13 @@ class CongestionControlEnv {
   struct Config {
     Mode mode{Mode::TRAIN};
     uint16_t rpcPort{60000};  // Port for RPCEnv
+
     Aggregation aggregation{Aggregation::TIME_WINDOW};
     std::chrono::milliseconds windowDuration{500};  // Time window duration
     uint32_t windowSize{10};                        // Fixed window size
-    uint32_t stepsPerEpisode{400};  // Reset interval for env during training
+
+    // Reset interval for env during training. 0 makes it non-episodic.
+    uint32_t stepsPerEpisode{400};
   };
 
   struct Action {

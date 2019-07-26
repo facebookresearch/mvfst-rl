@@ -74,7 +74,8 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
     } else {
       episode_step++;
       // TODO (viswanath): Option to not reset at all
-      done = (episode_step == config_.stepsPerEpisode);
+      done = (config_.stepsPerEpisode > 0) &&
+             (episode_step == config_.stepsPerEpisode);
     }
 
     stream->Write(step_pb);
