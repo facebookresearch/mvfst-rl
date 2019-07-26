@@ -22,7 +22,7 @@ parser.add_argument('--num_servers', default=4, type=int, metavar='N',
                     help='Number of environment servers.')
 
 test_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
-
+logs_path = path.join(SRC_DIR, 'train/logs')
 def run_emu(flags):
     sys.stderr.write('----- Running emulation experiments -----\n')
 
@@ -41,7 +41,8 @@ def run_emu(flags):
             cmd_tmpl = utils.safe_format(cmd_tmpl, mat_dict)
             # 3. expand meta
             cmd_tmpl = utils.safe_format(cmd_tmpl, utils.meta)
-            cmd_tmpl = utils.safe_format(cmd_tmpl, {'src_dir' : SRC_DIR})
+            cmd_tmpl = utils.safe_format(cmd_tmpl, {'src_dir' : SRC_DIR,
+                           'data_dir': path.join(logs_path, 'sc_%d' % job_cfg['scenario'])})
 
             job_queue.append((job_cfg, cmd_tmpl))
 
@@ -55,7 +56,8 @@ def run_emu(flags):
         p.wait()
 
 def get_cmd(cmd, port):
-    cmd = shlex.split(cmd) + ['--extra_sender_args', '--cc_env_port=%d --cc_env_mode=train' % port]
+    cmd = shlex.split(cmd) + ['--extra_sender_args',
+                             '--cc_env_port=%d --cc_env_mode=train' % port]
     cmd[0] = path.abspath(cmd[0])
     print(cmd)
     return cmd
