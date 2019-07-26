@@ -21,7 +21,7 @@ node:
       - -f 3 --interval 10
   macros:
     common_param_set: >-
-      remote {slave_addr}:{base_dir} --all --random-order -t 30
+      remote {slave_addr}:{base_dir} --schemes mvfst_rl
       --data-dir {data_dir} --pkill-cleanup --tunnel-server local
       --local-addr {master_ip} --local-desc "{master_desc}"
       --remote-desc "{slave_desc}" --ntp-addr {ntp_addr}
@@ -46,7 +46,7 @@ cloud:
       - -f 3 --interval 10
   macros:
     common_param_set: >-
-      remote {slave_addr}:{base_dir} --all --random-order -t 30
+      remote {slave_addr}:{base_dir} --schemes mvfst_rl
       --data-dir {data_dir} --pkill-cleanup --tunnel-server local
       --local-addr {master_ip} --local-desc "{master_desc}"
       --remote-desc "{slave_desc}" --ntp-addr {ntp_addr}
