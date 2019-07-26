@@ -1,6 +1,62 @@
 meta:
   branch: master
+  base_dir: ~/mv-rl-fst
   test_path: _build/deps/pantheon/src/experiments/test.py
+  data_base_dir: ~/mv-rl-fst/data
+  tmp_dir: ~/mv-rl-fst/tmp
+  install_deps_path: _build/deps/pantheon/tools/install_deps.sh
+  pkill_path: _build/deps/pantheon/tools/pkill.py
+  setup_system_path: _build/deps/pantheon/src/experiments/setup_system.py
+  setup_path: _build/deps/pantheon/src/experiments/setup.py
+  analyze_path: _build/deps/pantheon/src/analysis/analyze.py
+  traces_dir: train/traces
+
+node:
+  matrix:
+    sender_side:
+      - --sender local
+      - --sender remote
+    flow_scenario:
+      - -f 1
+      - -f 3 --interval 10
+  macros:
+    common_param_set: >-
+      remote {slave_addr}:{base_dir} --all --random-order -t 30
+      --data-dir {data_dir} --pkill-cleanup --tunnel-server local
+      --local-addr {master_ip} --local-desc "{master_desc}"
+      --remote-desc "{slave_desc}" --ntp-addr {ntp_addr}
+  jobs:
+    # cellular (run only if a cellular interface is up)
+    - command: >-
+        {src_dir}/{test_path} {common_param_set} --run-times 3
+        {sender_side} {flow_scenario}
+        --local-if {master_eth_if} --remote-if {slave_cell_if} > {job_log} 2>&1
+    # wired (specify network interfaces to detect MTU)
+    - command: >-
+        {src_dir}/{test_path} {common_param_set} --run-times 10
+        {sender_side} {flow_scenario}
+        --local-if {master_eth_if} --remote-if {slave_eth_if} > {job_log} 2>&1
+cloud:
+  matrix:
+    sender_side:
+      - --sender local
+      - --sender remote
+    flow_scenario:
+      - -f 1
+      - -f 3 --interval 10
+  macros:
+    common_param_set: >-
+      remote {slave_addr}:{base_dir} --all --random-order -t 30
+      --data-dir {data_dir} --pkill-cleanup --tunnel-server local
+      --local-addr {master_ip} --local-desc "{master_desc}"
+      --remote-desc "{slave_desc}" --ntp-addr {ntp_addr}
+      --local-if {master_eth_if} --remote-if {slave_eth_if}
+  jobs:
+    # wired (specify network interfaces above to detect MTU)
+    - command: >-
+        {src_dir}/{test_path} {common_param_set} --run-times 10
+        {sender_side} {flow_scenario} > {job_log} 2>&1
+
 emu:
   matrix:
     flow_scenario:
@@ -17,6 +73,8 @@ emu:
         (https://pantheon.stanford.edu/result/188/)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/0.57mbps-poisson.trace
+        --downlink-trace {src_dir}/{traces_dir}/0.57mbps-poisson.trace
         --prepend-mm-cmds "mm-delay 28 mm-loss uplink 0.0477"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=14"
     # 2, 'Calibrated emulator (Mexico cellular to AWS California)'
@@ -26,6 +84,8 @@ emu:
         (https://pantheon.stanford.edu/result/196/)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/2.64mbps-poisson.trace
+        --downlink-trace {src_dir}/{traces_dir}/2.64mbps-poisson.trace
         --prepend-mm-cmds "mm-delay 88"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=130"
     # 3, 'Calibrated emulator (AWS Brazil to Colombia cellular)'
@@ -35,6 +95,8 @@ emu:
         (https://pantheon.stanford.edu/result/339/)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/3.04mbps-poisson.trace
+        --downlink-trace {src_dir}/{traces_dir}/3.04mbps-poisson.trace
         --prepend-mm-cmds "mm-delay 130"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=426"
     # 4, 'Calibrated emulator (India to AWS India)'
@@ -44,6 +106,8 @@ emu:
         (https://pantheon.stanford.edu/result/251/)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/100.42mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/100.42mbps.trace
         --prepend-mm-cmds "mm-delay 27"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=173"
     # 5, 'Calibrated emulator (AWS Korea to China)'
@@ -53,6 +117,8 @@ emu:
         (https://pantheon.stanford.edu/result/361/)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/77.72mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/77.72mbps.trace
         --prepend-mm-cmds "mm-delay 51 mm-loss uplink 0.0006"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=94"
     # 6, 'Calibrated emulator (AWS California to Mexico)'
@@ -62,6 +128,8 @@ emu:
         (https://pantheon.stanford.edu/result/353/)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/114.68mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/114.68mbps.trace
         --prepend-mm-cmds "mm-delay 45"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=450"
     # 7, 'Token-bucket based policer (bandwidth 12mbps, RTT 20ms)'
@@ -69,6 +137,8 @@ emu:
       desc: Token-bucket based policer (bandwidth 12mbps, RTT 20ms)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/12mbps.trace
         --prepend-mm-cmds "mm-delay 10"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=1 --downlink-queue=droptail --downlink-queue-args=packets=1"
     # 8, 'Token-bucket based policer (bandwidth 60mbps, RTT 20ms)'
@@ -76,6 +146,8 @@ emu:
       desc: Token-bucket based policer (bandwidth 60mbps, RTT 20ms)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/60mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/60mbps.trace
         --prepend-mm-cmds "mm-delay 10"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=1 --downlink-queue=droptail --downlink-queue-args=packets=1"
     # 9, 'Token-bucket based policer (bandwidth 108mbps, RTT 20ms)'
@@ -83,6 +155,8 @@ emu:
       desc: Token-bucket based policer (bandwidth 108mbps, RTT 20ms)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/108mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/108mbps.trace
         --prepend-mm-cmds "mm-delay 10"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=1 --downlink-queue=droptail --downlink-queue-args=packets=1"
     # 10, 'Token-bucket based policer (bandwidth 12mbps, RTT 100ms)'
@@ -90,6 +164,8 @@ emu:
       desc: Token-bucket based policer (bandwidth 12mbps, RTT 100ms)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/12mbps.trace
         --prepend-mm-cmds "mm-delay 50"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=1 --downlink-queue=droptail --downlink-queue-args=packets=1"
     # 11, 'Token-bucket based policer (bandwidth 60mbps, RTT 100ms)'
@@ -97,6 +173,8 @@ emu:
       desc: Token-bucket based policer (bandwidth 60mbps, RTT 100ms)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/60mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/60mbps.trace
         --prepend-mm-cmds "mm-delay 50"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=1 --downlink-queue=droptail --downlink-queue-args=packets=1"
     # 12, 'Token-bucket based policer (bandwidth 108mbps, RTT 100ms)'
@@ -104,6 +182,8 @@ emu:
       desc: Token-bucket based policer (bandwidth 108mbps, RTT 100ms)
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/108mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/108mbps.trace
         --prepend-mm-cmds "mm-delay 50"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=packets=1 --downlink-queue=droptail --downlink-queue-args=packets=1"
     # 13, 'Severe ACK aggregation (1 ACK every 100ms)'
@@ -111,18 +191,24 @@ emu:
       desc: 'Severe ACK aggregation (1 ACK every 100ms)'
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/0.12mbps.trace
         --prepend-mm-cmds "mm-delay 10"
     # 14, 'Severe ACK aggregation (10 ACKs every 200ms)'
     - scenario: 14
       desc: 'Severe ACK aggregation (10 ACKs every 200ms)'
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/10-every-200.trace
         --prepend-mm-cmds "mm-delay 10"
     # 15, 'Bottleneck buffer = BDP/10'
     - scenario: 15
       desc: 'Bottleneck buffer = BDP/10'
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/12mbps.trace
         --prepend-mm-cmds "mm-delay 30"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=bytes=9000"
     # 16, 'Bottleneck buffer = BDP/3'
@@ -130,6 +216,8 @@ emu:
       desc: 'Bottleneck buffer = BDP/3'
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/12mbps.trace
         --prepend-mm-cmds "mm-delay 30"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=bytes=30000"
     # 17, 'Bottleneck buffer = BDP/2'
@@ -137,6 +225,8 @@ emu:
       desc: 'Bottleneck buffer = BDP/2'
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/12mbps.trace
         --prepend-mm-cmds "mm-delay 30"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=bytes=45000"
     # 18, 'Bottleneck buffer = BDP'
@@ -144,5 +234,7 @@ emu:
       desc: 'Bottleneck buffer = BDP'
       command: >-
         {src_dir}/{test_path} {common_param_set}
+        --uplink-trace {src_dir}/{traces_dir}/12mbps.trace
+        --downlink-trace {src_dir}/{traces_dir}/12mbps.trace
         --prepend-mm-cmds "mm-delay 30"
         --extra-mm-link-args "--uplink-queue=droptail --uplink-queue-args=bytes=90000"

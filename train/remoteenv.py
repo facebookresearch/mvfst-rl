@@ -46,8 +46,9 @@ def run_emu(flags):
             job_queue.append((job_cfg, cmd_tmpl))
 
     processes = []
-    for i in range(min(flags.num_servers, len(job_queue))):
-        job_cfg, cmd = job_queue[i]
+    n = len(job_queue)
+    for i in range(flags.num_servers):
+        job_cfg, cmd = job_queue[i % n]
         with open(path.join(SRC_DIR, "sc_%d.log" % job_cfg['scenario']), 'w') as log_f:
             p = subprocess.Popen(get_cmd(cmd, flags.start_port + i), stdout=log_f, stderr=log_f)
     for p in processes:

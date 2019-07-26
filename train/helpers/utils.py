@@ -10,7 +10,7 @@ from collections import defaultdict
 from constants import SRC_DIR
 
 def parse_setup():
-    with open(path.join(SRC_DIR, 'train/setup.yml')) as cfg:
+    with open(path.join(SRC_DIR, 'train/experiments.yml')) as cfg:
         return yaml.load(cfg)
 
 
