@@ -1,13 +1,11 @@
-import sys
 from os import path
 import yaml
-import time
 import string
 import itertools
 from datetime import datetime
-from collections import defaultdict
 
 from constants import SRC_DIR
+
 
 def parse_setup():
     with open(path.join(SRC_DIR, 'train/experiments.yml')) as cfg:
@@ -31,7 +29,7 @@ def safe_format(format_string, key_dict):
 def expand_matrix(matrix_cfg):
     input_list = []
     for variable, value_list in matrix_cfg.items():
-        input_list.append([{variable:value} for value in value_list])
+        input_list.append([{variable: value} for value in value_list])
 
     ret = []
     for element in itertools.product(*input_list):
