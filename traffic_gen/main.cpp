@@ -30,6 +30,14 @@ DEFINE_double(
     "Normalization factor for temporal (in ms) fields in observation");
 DEFINE_double(cc_env_norm_bytes, 1000.0,
               "Normalization factor for byte fields in observation");
+DEFINE_double(cc_env_reward_throughput_factor, 1.0,
+              "Throughput multiplier in reward");
+DEFINE_double(cc_env_reward_delay_factor, 0.5, "Delay multiplier in reward");
+DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
+              "Packet loss multiplier in reward");
+DEFINE_bool(cc_env_reward_max_delay, false,
+            "Whether to take max delay over observations in reward."
+            "By default, avg delay is used.");
 
 using namespace quic::traffic_gen;
 
@@ -62,6 +70,11 @@ makeRLCongestionControllerFactory() {
 
   config.normMs = FLAGS_cc_env_norm_ms;
   config.normBytes = FLAGS_cc_env_norm_bytes;
+
+  config.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
+  config.delayFactor = FLAGS_cc_env_reward_delay_factor;
+  config.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
+  config.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(config);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);

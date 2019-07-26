@@ -39,6 +39,14 @@ class CongestionControlEnv {
     // Normalization factors for observation fields
     float normMs{100.0};
     float normBytes{1000.0};
+
+    // Multipliers for reward components
+    float throughputFactor{1.0};
+    float delayFactor{0.5};
+    float packetLossFactor{0.0};
+
+    // Whether to use max delay in reward (avg by default)
+    bool maxDelayInReward{false};
   };
 
   struct Action {
@@ -108,7 +116,8 @@ class CongestionControlEnv {
       data_[static_cast<int>(field)] = value;
     }
 
-    static float reward(const std::vector<Observation>& observations);
+    static float reward(const std::vector<Observation>& observations,
+                        const Config& cfg);
 
     torch::Tensor toTensor() const;
     void toTensor(torch::Tensor& tensor) const;

@@ -21,7 +21,7 @@ CongestionControlRPCEnv::~CongestionControlRPCEnv() {
 
 void CongestionControlRPCEnv::onObservation(
     const std::vector<Observation>& observations) {
-  float reward = Observation::reward(observations);
+  float reward = Observation::reward(observations, config_);
   {
     std::lock_guard<std::mutex> g(mutex_);
     Observation::toTensor(observations, tensor_);
