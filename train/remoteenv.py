@@ -54,6 +54,8 @@ def run_emu(flags):
         job_cfg, cmd = job_queue[i % n]
         log_file_name = path.join(SRC_DIR, "sc_%d.log" % job_cfg['scenario'])
         with open(log_file_name, 'w') as log_f:
+            cmd_to_process = get_cmd(cmd, flags.start_port + i)
+            sys.stderr.write('$ %s\n' % ' '.join(cmd_to_process).strip())
             p = subprocess.Popen(get_cmd(cmd, flags.start_port + i),
                                  stdout=log_f, stderr=log_f)
     for p in processes:
@@ -64,7 +66,6 @@ def get_cmd(cmd, port):
     cmd = shlex.split(cmd) + ['--extra_sender_args',
                               '--cc_env_port=%d --cc_env_mode=train' % port]
     cmd[0] = path.abspath(cmd[0])
-    print(cmd)
     return cmd
 
 
