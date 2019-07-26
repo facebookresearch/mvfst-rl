@@ -73,7 +73,6 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
       // TODO (viswanath): Observations need to be reset too
     } else {
       episode_step++;
-      // TODO (viswanath): Option to not reset at all
       done = (config_.stepsPerEpisode > 0) &&
              (episode_step == config_.stepsPerEpisode);
     }
