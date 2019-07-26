@@ -55,9 +55,10 @@ void RLCongestionController::onPacketAckOrLoss(
   }
 
   // State update to the env
-  Observation observation;
-  setObservation(ack, loss, observation);
-  env_->onUpdate(std::move(observation));
+  Observation obs;
+  if (setObservation(ack, loss, obs)) {
+    env_->onUpdate(std::move(obs));
+  }
 }
 
 void RLCongestionController::onPacketAcked(const AckEvent& ack) {
@@ -112,59 +113,67 @@ void RLCongestionController::onReset() noexcept {
   // given async env?
 }
 
-void RLCongestionController::setObservation(
+bool RLCongestionController::setObservation(
     const folly::Optional<AckEvent>& ack,
     const folly::Optional<LossEvent>& loss, Observation& obs) {
+  const auto& state = conn_.lossState;
+
   const auto& rttMin = minRTTFilter_.GetBest();
-  const float rttMinMs = rttMin.count() / 1000.0;
-  const float rttStandingMs = standingRTTFilter_.GetBest().count() / 1000.0;
-  const float delayMs =
-      duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count() /
-      1000.0;
+  const auto& rttStanding = standingRTTFilter_.GetBest().count();
+  const auto& delay =
+      duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count();
+  if (rttStanding == 0 || delay < 0) {
+    LOG(ERROR) << "Invalid rttStanding or delay, skipping observation: "
+               << "rttStanding = " << rttStanding << ", delay = " << delay
+               << " " << conn_;
+    return false;
+  }
 
-  obs[Field::RTT_MIN_MS] = rttMinMs;
-  obs[Field::RTT_STANDING_MS] = rttStandingMs;
-  obs[Field::LRTT_MS] = conn_.lossState.lrtt.count() / 1000.0;
-  obs[Field::SRTT_MS] = conn_.lossState.srtt.count() / 1000.0;
-  obs[Field::RTT_VAR_MS] = conn_.lossState.rttvar.count() / 1000.0;
-  obs[Field::DELAY_MS] = delayMs;
+  const float normMs = env_->normMs();
+  const float normBytes = env_->normBytes();
 
-  obs[Field::CWND_BYTES] = cwndBytes_;
-  obs[Field::BYTES_IN_FLIGHT] = bytesInFlight_;
-  obs[Field::WRITABLE_BYTES] = getWritableBytes();
-  obs[Field::BYTES_SENT] = conn_.lossState.totalBytesSent - prevTotalBytesSent_;
-  obs[Field::BYTES_RECEIVED] =
-      conn_.lossState.totalBytesRecvd - prevTotalBytesRecvd_;
-  obs[Field::BYTES_RETRANSMITTED] =
-      conn_.lossState.totalBytesRetransmitted - prevTotalBytesRetransmitted_;
+  obs[Field::RTT_MIN] = rttMin.count() / 1000.0 / normMs;
+  obs[Field::RTT_STANDING] = rttStanding / 1000.0 / normMs;
+  obs[Field::LRTT] = state.lrtt.count() / 1000.0 / normMs;
+  obs[Field::SRTT] = state.srtt.count() / 1000.0 / normMs;
+  obs[Field::RTT_VAR] = state.rttvar.count() / 1000.0 / normMs;
+  obs[Field::DELAY] = delay / 1000.0 / normMs;
 
-  obs[Field::PTO_COUNT] = conn_.lossState.ptoCount;
-  obs[Field::TOTAL_PTO_DELTA] =
-      conn_.lossState.totalPTOCount - prevTotalPTOCount_;
-  obs[Field::RTX_COUNT] = conn_.lossState.rtxCount - prevRtxCount_;
+  obs[Field::CWND] = cwndBytes_ / normBytes;
+  obs[Field::IN_FLIGHT] = bytesInFlight_ / normBytes;
+  obs[Field::WRITABLE] = getWritableBytes() / normBytes;
+  obs[Field::SENT] = (state.totalBytesSent - prevTotalBytesSent_) / normBytes;
+  obs[Field::RECEIVED] =
+      (state.totalBytesRecvd - prevTotalBytesRecvd_) / normBytes;
+  obs[Field::RETRANSMITTED] =
+      (state.totalBytesRetransmitted - prevTotalBytesRetransmitted_) /
+      normBytes;
+
+  obs[Field::PTO_COUNT] = state.ptoCount;
+  obs[Field::TOTAL_PTO_DELTA] = state.totalPTOCount - prevTotalPTOCount_;
+  obs[Field::RTX_COUNT] = state.rtxCount - prevRtxCount_;
   obs[Field::TIMEOUT_BASED_RTX_COUNT] =
-      conn_.lossState.timeoutBasedRtxCount - prevTimeoutBasedRtxCount_;
+      state.timeoutBasedRtxCount - prevTimeoutBasedRtxCount_;
 
   if (ack && ack->largestAckedPacket.hasValue()) {
-    obs[Field::ACKED_BYTES] = ack->ackedBytes;
-    obs[Field::ACKED_PACKETS] = ack->ackedPackets.size();
-    // Calculate throughput in bytes per sec
-    obs[Field::THROUGHPUT] = ack->ackedBytes * 1000.0 / rttStandingMs;
+    obs[Field::ACKED] = ack->ackedBytes / normBytes;
+    obs[Field::THROUGHPUT] = obs[Field::ACKED] / obs[Field::RTT_STANDING];
   }
 
   if (loss) {
-    obs[Field::LOST_BYTES] = loss->lostBytes;
-    obs[Field::LOST_PACKETS] = loss->lostPackets;
+    obs[Field::LOST] = loss->lostBytes / normBytes;
     obs[Field::PERSISTENT_CONGESTION] = loss->persistentCongestion;
   }
 
   // Update prev state values
-  prevTotalBytesSent_ = conn_.lossState.totalBytesSent;
-  prevTotalBytesRecvd_ = conn_.lossState.totalBytesRecvd;
-  prevTotalBytesRetransmitted_ = conn_.lossState.totalBytesRetransmitted;
-  prevTotalPTOCount_ = conn_.lossState.totalPTOCount;
-  prevRtxCount_ = conn_.lossState.rtxCount;
-  prevTimeoutBasedRtxCount_ = conn_.lossState.timeoutBasedRtxCount;
+  prevTotalBytesSent_ = state.totalBytesSent;
+  prevTotalBytesRecvd_ = state.totalBytesRecvd;
+  prevTotalBytesRetransmitted_ = state.totalBytesRetransmitted;
+  prevTotalPTOCount_ = state.totalPTOCount;
+  prevRtxCount_ = state.rtxCount;
+  prevTimeoutBasedRtxCount_ = state.timeoutBasedRtxCount;
+
+  return true;
 }
 
 uint64_t RLCongestionController::getWritableBytes() const noexcept {

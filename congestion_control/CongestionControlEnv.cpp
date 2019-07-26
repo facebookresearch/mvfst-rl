@@ -90,30 +90,30 @@ std::string Observation::fieldToString(const uint16_t field) {
 
 std::string Observation::fieldToString(const Field field) {
   switch (field) {
-    case Field::RTT_MIN_MS:
-      return "RTT_MIN_MS";
-    case Field::RTT_STANDING_MS:
-      return "RTT_STANDING_MS";
-    case Field::LRTT_MS:
-      return "LRTT_MS";
-    case Field::SRTT_MS:
-      return "SRTT_MS";
-    case Field::RTT_VAR_MS:
-      return "RTT_VAR_MS";
-    case Field::DELAY_MS:
-      return "DELAY_MS";
-    case Field::CWND_BYTES:
-      return "CWND_BYTES";
-    case Field::BYTES_IN_FLIGHT:
-      return "BYTES_IN_FLIGHT";
-    case Field::WRITABLE_BYTES:
-      return "WRITABLE_BYTES";
-    case Field::BYTES_SENT:
-      return "BYTES_SENT";
-    case Field::BYTES_RECEIVED:
-      return "BYTES_RECEIVED";
-    case Field::BYTES_RETRANSMITTED:
-      return "BYTES_RETRANSMITTED";
+    case Field::RTT_MIN:
+      return "RTT_MIN";
+    case Field::RTT_STANDING:
+      return "RTT_STANDING";
+    case Field::LRTT:
+      return "LRTT";
+    case Field::SRTT:
+      return "SRTT";
+    case Field::RTT_VAR:
+      return "RTT_VAR";
+    case Field::DELAY:
+      return "DELAY";
+    case Field::CWND:
+      return "CWND";
+    case Field::IN_FLIGHT:
+      return "IN_FLIGHT";
+    case Field::WRITABLE:
+      return "WRITABLE";
+    case Field::SENT:
+      return "SENT";
+    case Field::RECEIVED:
+      return "RECEIVED";
+    case Field::RETRANSMITTED:
+      return "RETRANSMITTED";
     case Field::PTO_COUNT:
       return "PTO_COUNT";
     case Field::TOTAL_PTO_DELTA:
@@ -122,16 +122,12 @@ std::string Observation::fieldToString(const Field field) {
       return "RTX_COUNT";
     case Field::TIMEOUT_BASED_RTX_COUNT:
       return "TIMEOUT_BASED_RTX_COUNT";
-    case Field::ACKED_BYTES:
-      return "ACKED_BYTES";
-    case Field::ACKED_PACKETS:
-      return "ACKED_PACKETS";
+    case Field::ACKED:
+      return "ACKED";
     case Field::THROUGHPUT:
       return "THROUGHPUT";
-    case Field::LOST_BYTES:
-      return "LOST_BYTES";
-    case Field::LOST_PACKETS:
-      return "LOST_PACKETS";
+    case Field::LOST:
+      return "LOST";
     case Field::PERSISTENT_CONGESTION:
       return "PERSISTENT_CONGESTION";
     case Field::PREV_CWND_ACTION:

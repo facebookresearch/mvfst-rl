@@ -25,6 +25,11 @@ DEFINE_int32(cc_env_fixed_window_size, 10,
 DEFINE_int32(cc_env_steps_per_episode, 0,
              "Number of steps per training episode before the env is reset "
              "(0 for non-episodic training)");
+DEFINE_double(
+    cc_env_norm_ms, 100.0,
+    "Normalization factor for temporal (in ms) fields in observation");
+DEFINE_double(cc_env_norm_bytes, 1000.0,
+              "Normalization factor for byte fields in observation");
 
 using namespace quic::traffic_gen;
 
@@ -54,6 +59,9 @@ makeRLCongestionControllerFactory() {
   config.windowSize = FLAGS_cc_env_fixed_window_size;
 
   config.stepsPerEpisode = FLAGS_cc_env_steps_per_episode;
+
+  config.normMs = FLAGS_cc_env_norm_ms;
+  config.normBytes = FLAGS_cc_env_norm_bytes;
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(config);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);

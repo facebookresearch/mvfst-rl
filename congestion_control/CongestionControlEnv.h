@@ -35,6 +35,10 @@ class CongestionControlEnv {
 
     // Reset interval for env during training. 0 makes it non-episodic.
     uint32_t stepsPerEpisode{400};
+
+    // Normalization factors for observation fields
+    float normMs{100.0};
+    float normBytes{1000.0};
   };
 
   struct Action {
@@ -45,24 +49,22 @@ class CongestionControlEnv {
   struct Observation {
    public:
     // NOTE: If fields are added, make sure to update fieldsToString() as well.
-    // TODO (viswanath): Analyze logs and update fields to get them to somewhat
-    // similar scales (packets vs bytes, etc)
     enum class Field : uint16_t {
       // RTT related
-      RTT_MIN_MS = 0,
-      RTT_STANDING_MS,
-      LRTT_MS,
-      SRTT_MS,
-      RTT_VAR_MS,
-      DELAY_MS,
+      RTT_MIN = 0,
+      RTT_STANDING,
+      LRTT,
+      SRTT,
+      RTT_VAR,
+      DELAY,
 
       // Bytes related
-      CWND_BYTES,
-      BYTES_IN_FLIGHT,
-      WRITABLE_BYTES,
-      BYTES_SENT,
-      BYTES_RECEIVED,
-      BYTES_RETRANSMITTED,
+      CWND,
+      IN_FLIGHT,
+      WRITABLE,
+      SENT,
+      RECEIVED,
+      RETRANSMITTED,
 
       // LossState
       PTO_COUNT,
@@ -71,13 +73,11 @@ class CongestionControlEnv {
       TIMEOUT_BASED_RTX_COUNT,
 
       // AckEvent
-      ACKED_BYTES,
-      ACKED_PACKETS,
+      ACKED,
       THROUGHPUT,
 
       // LossEvent
-      LOST_BYTES,
-      LOST_PACKETS,
+      LOST,
       PERSISTENT_CONGESTION,
 
       // Previous action taken
@@ -136,6 +136,11 @@ class CongestionControlEnv {
   // RLCongestionController) to share Observation updates after every
   // Ack/Loss event.
   void onUpdate(Observation&& observation);
+
+  inline const Config& config() const { return config_; }
+
+  inline float normMs() const { return config_.normMs; }
+  inline float normBytes() const { return config_.normBytes; }
 
  protected:
   // onObservation() will be triggered when there are enough state updates to
