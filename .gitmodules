@@ -1,7 +1,3 @@
 [submodule "third-party/mvfst"]
 	path = third-party/mvfst
 	url = https://github.com/facebookincubator/mvfst
-[submodule "third-party/torchbeast"]
-	path = third-party/torchbeast
-	url = git@github.com:fairinternal/torchbeast.git
-	branch = wheel
