@@ -10,7 +10,7 @@ CongestionControlRPCEnv::CongestionControlRPCEnv(
     CongestionControlEnv::Callback* cob)
     : CongestionControlEnv(config, cob),
       envServer_(std::make_unique<EnvServer>(this, config.rpcPort)) {
-  tensor_ = torch::empty({0, Observation::DIMS}, torch::kFloat32);
+  tensor_ = torch::empty({0, Observation::kNumFields}, torch::kFloat32);
   envServer_->start();
 }
 
@@ -21,11 +21,7 @@ CongestionControlRPCEnv::~CongestionControlRPCEnv() {
 
 void CongestionControlRPCEnv::onObservation(
     const std::vector<Observation>& observations) {
-  float reward = 0;
-  for (const auto& observation : observations) {
-    reward += observation.reward();
-  }
-
+  float reward = Observation::reward(observations, config_);
   {
     std::lock_guard<std::mutex> g(mutex_);
     Observation::toTensor(observations, tensor_);
@@ -43,7 +39,8 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
   rpcenv::Step step_pb;
   rpcenv::Action action_pb;
   Action action;
-  int episode_step = 0;
+  bool done = false;
+  uint32_t episode_step = 0;
   float episode_return = 0.0;
   std::unique_lock<std::mutex> lock(mutex_);
 
@@ -56,11 +53,10 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
       return grpc::Status::OK;
     }
 
-    episode_step += 1;
     episode_return += reward_;
     fillNDArray(step_pb.mutable_observation()->mutable_array(), tensor_);
     step_pb.set_reward(reward_);
-    step_pb.set_done(false);  // TODO (viswanath): Are we ever done?
+    step_pb.set_done(done);
     step_pb.set_episode_step(episode_step);
     step_pb.set_episode_return(episode_return);
 
@@ -69,11 +65,22 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
     observationReady_ = false;  // Back to waiting
     lock.unlock();
 
-    stream->Write(step_pb);
-    if (!stream->Read(&action_pb)) {
-      throw std::runtime_error("Read failed in StreamingEnv");
+    if (done) {
+      // Reset episode_* for the _next_ step.
+      episode_step = 0;
+      episode_return = 0.0;
+      onReset();  // Reset the env
+      // TODO (viswanath): Observations need to be reset too
+    } else {
+      episode_step++;
+      done = (config_.stepsPerEpisode > 0) &&
+             (episode_step == config_.stepsPerEpisode);
     }
 
+    stream->Write(step_pb);
+    if (!stream->Read(&action_pb)) {
+      LOG(FATAL) << "Read failed in StreamingEnv";
+    }
     action.cwndAction = action_pb.action();
     onAction(action);
   }

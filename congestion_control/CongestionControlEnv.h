@@ -28,40 +28,114 @@ class CongestionControlEnv {
   struct Config {
     Mode mode{Mode::TRAIN};
     uint16_t rpcPort{60000};  // Port for RPCEnv
+
     Aggregation aggregation{Aggregation::TIME_WINDOW};
     std::chrono::milliseconds windowDuration{500};  // Time window duration
     uint32_t windowSize{10};                        // Fixed window size
+
+    // Reset interval for env during training. 0 makes it non-episodic.
+    uint32_t stepsPerEpisode{400};
+
+    // Normalization factors for observation fields
+    float normMs{100.0};
+    float normBytes{1000.0};
+
+    // Multipliers for reward components
+    float throughputFactor{1.0};
+    float delayFactor{0.5};
+    float packetLossFactor{0.0};
+
+    // Whether to use max delay in reward (avg by default)
+    bool maxDelayInReward{false};
   };
 
-  // Observation space
+  struct Action {
+    // This assumes that the policy has a no-op action at index 0
+    int32_t cwndAction{0};
+  };
+
   struct Observation {
-    // TODO (viswanath): Add more stuff
-    uint64_t rtt;
-    uint64_t cwndBytes;
+   public:
+    // NOTE: If fields are added, make sure to update fieldsToString() as well.
+    enum class Field : uint16_t {
+      // RTT related
+      RTT_MIN = 0,
+      RTT_STANDING,
+      LRTT,
+      SRTT,
+      RTT_VAR,
+      DELAY,
 
-    static const int DIMS = 2;
+      // Bytes related
+      CWND,
+      IN_FLIGHT,
+      WRITABLE,
+      SENT,
+      RECEIVED,
+      RETRANSMITTED,
 
-    inline float reward() const {
-      // TODO (viswanath): impl copa?
-      return 0;
+      // LossState
+      PTO_COUNT,
+      TOTAL_PTO_DELTA,  // Derived from LossState::totalPTOCount
+      RTX_COUNT,
+      TIMEOUT_BASED_RTX_COUNT,
+
+      // AckEvent
+      ACKED,
+      THROUGHPUT,
+
+      // LossEvent
+      LOST,
+      PERSISTENT_CONGESTION,
+
+      // Previous action taken
+      PREV_CWND_ACTION,
+
+      // Total number of fields
+      NUM_FIELDS
+    };
+
+    static constexpr uint16_t kNumFields =
+        static_cast<uint16_t>(Field::NUM_FIELDS);
+
+    Observation() : data_(kNumFields, 0.0) {}
+
+    inline const float* data() const { return data_.data(); }
+    inline constexpr uint16_t size() const { return kNumFields; }
+
+    inline float operator[](int idx) const { return data_[idx]; }
+    inline float operator[](Field field) const {
+      return data_[static_cast<int>(field)];
     }
+    inline float& operator[](int idx) { return data_[idx]; }
+    inline float& operator[](Field field) {
+      return data_[static_cast<int>(field)];
+    }
+
+    inline void setField(const Field field, const float& value) {
+      data_[static_cast<int>(field)] = value;
+    }
+
+    static float reward(const std::vector<Observation>& observations,
+                        const Config& cfg);
 
     torch::Tensor toTensor() const;
     void toTensor(torch::Tensor& tensor) const;
-
     static torch::Tensor toTensor(const std::vector<Observation>& observations);
     static void toTensor(const std::vector<Observation>& observations,
                          torch::Tensor& tensor);
-  };
 
-  // Action space
-  struct Action {
-    int32_t cwndAction;
+    static std::string fieldToString(const uint16_t field);
+    static std::string fieldToString(const Field field);
+
+   private:
+    std::vector<float> data_;
   };
 
   struct Callback {
     virtual ~Callback() = default;
     virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
+    virtual void onReset() noexcept = 0;
   };
 
   CongestionControlEnv(const Config& config, Callback* cob);
@@ -72,6 +146,11 @@ class CongestionControlEnv {
   // Ack/Loss event.
   void onUpdate(Observation&& observation);
 
+  inline const Config& config() const { return config_; }
+
+  inline float normMs() const { return config_.normMs; }
+  inline float normBytes() const { return config_.normBytes; }
+
  protected:
   // onObservation() will be triggered when there are enough state updates to
   // run the policy and predict an action. Subclasses should implement this
@@ -79,9 +158,10 @@ class CongestionControlEnv {
   // asynchronously.
   virtual void onObservation(const std::vector<Observation>& observations) = 0;
 
-  // Callback to be invoked by subclasses when there is an action update
+  // Callbacks to be invoked by subclasses when there is an update
   // following onObservation().
   void onAction(const Action& action);
+  void onReset();
 
   const Config& config_;
 
@@ -113,6 +193,10 @@ class CongestionControlEnv {
   Callback* cob_{nullptr};
   std::vector<Observation> observations_;
   ObservationTimeout observationTimeout_;
+  Action prevAction_;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const CongestionControlEnv::Observation& observation);
 
 }  // namespace quic

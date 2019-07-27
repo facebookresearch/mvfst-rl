@@ -53,6 +53,11 @@ class RLCongestionController : public CongestionController,
 
   // CongestionControlEnv::Callback
   void onUpdate(const uint64_t& cwndBytes) noexcept override;
+  void onReset() noexcept override;
+
+  bool setObservation(const folly::Optional<AckEvent>& ack,
+                      const folly::Optional<LossEvent>& loss,
+                      CongestionControlEnv::Observation& observation);
 
   QuicConnectionStateBase& conn_;
   uint64_t bytesInFlight_{0};
@@ -70,6 +75,15 @@ class RLCongestionController : public CongestionController,
                  MinFilter<std::chrono::microseconds>, uint64_t,
                  uint64_t>
       standingRTTFilter_;  // To get min RTT over srtt/2
+
+  // Variables to track conn_.lossState values from previous ack or loss
+  // to compute state deltas for current ack or loss
+  uint64_t prevTotalBytesSent_{0};
+  uint64_t prevTotalBytesRecvd_{0};
+  uint64_t prevTotalBytesRetransmitted_{0};
+  uint32_t prevTotalPTOCount_{0};
+  uint32_t prevRtxCount_{0};
+  uint32_t prevTimeoutBasedRtxCount_{0};
 };
 
 }  // namespace quic
