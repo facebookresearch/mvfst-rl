@@ -80,6 +80,7 @@ float Observation::reward(const std::vector<Observation>& observations,
   float delayMs = (cfg.maxDelayInReward ? maxDelayMs : avgDelayMs);
   float lostBytes = totalLost * cfg.normBytes;
 
+  // TODO (viswanath): Differences in reward scale based on network condition.
   float reward = cfg.throughputFactor * std::log(throughputBytesPerMs) -
                  cfg.delayFactor * std::log(1 + delayMs) -
                  cfg.packetLossFactor * std::log(1 + lostBytes);
