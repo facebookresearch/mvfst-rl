@@ -28,15 +28,15 @@ src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
 
 
 def get_cmd(port):
-    extra_sender_args = ' '.join([
+    extra_sender_args = [
         '--cc_env_mode=train',
         '--cc_env_port={}'.format(port),
-    ])
+    ]
     cmd = [
         src_path,
         'local',
         '--schemes', 'mvfst_rl',
-        '--extra_sender_args', '"{}"'.format(extra_sender_args),
+        '--extra_sender_args', ' '.join(extra_sender_args),
     ]
     return cmd
 
@@ -50,11 +50,11 @@ if __name__ == "__main__":
         shell=True,
         stdout=subprocess.PIPE,
     )
-    python2_path = result.stdout.decode('utf-8')
+    python2_path = result.stdout.decode('utf-8').strip()
     logging.info('Located python2 in {}'.format(python2_path))
 
     pantheon_env = os.environ.copy()
-    pantheon_env["PATH"] = python2_path + pantheon_env["PATH"]
+    pantheon_env["PATH"] = ':'.join([python2_path, pantheon_env["PATH"]])
 
     logging.info('Starting {} Pantheon env instances'.format(flags.num_env))
 
