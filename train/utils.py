@@ -4,16 +4,7 @@ import string
 import itertools
 from datetime import datetime
 
-from constants import SRC_DIR
-
-
-def parse_setup():
-    with open(path.join(SRC_DIR, 'train/experiments.yml')) as cfg:
-        return yaml.load(cfg)
-
-
-expt_cfg = parse_setup()
-meta = expt_cfg['meta']
+from constants import SRC_DIR, PANTHEON_ROOT
 
 
 class SafeDict(dict):
@@ -24,6 +15,17 @@ class SafeDict(dict):
 # format 'format_string' but ignore keys that do not exist in 'key_dict'
 def safe_format(format_string, key_dict):
     return string.Formatter().vformat(format_string, (), SafeDict(key_dict))
+
+
+def parse_setup():
+    with open(path.join(SRC_DIR, 'train/experiments.yml')) as cfg:
+        return yaml.load(safe_format(cfg.read(),
+                                     {'src_dir': SRC_DIR,
+                                      'pantheon_root': PANTHEON_ROOT}))
+
+
+expt_cfg = parse_setup()
+meta = expt_cfg['meta']
 
 
 def expand_matrix(matrix_cfg):
