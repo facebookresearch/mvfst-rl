@@ -43,8 +43,7 @@ def run_emu(flags):
             cmd_tmpl = utils.safe_format(cmd_tmpl, utils.meta)
             data_dir = path.join(logs_path, 'sc_%d' % job_cfg['scenario'])
             cmd_tmpl = utils.safe_format(cmd_tmpl,
-                                         {'src_dir': SRC_DIR,
-                                          'data_dir': data_dir})
+                                         {'data_dir': data_dir})
 
             job_queue.append((job_cfg, cmd_tmpl))
 
