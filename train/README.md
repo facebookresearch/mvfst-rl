@@ -1,22 +1,20 @@
 ## About
 
---------
+The train directory contains all the tools needed to train RL-based congestion control using
+IMPLALA with [Pantheon](https://github.com/fairinternal/pantheon) as the network emulator.
 
-The train directory contains all the tools needed to train RL algorithms 
-using [pantheon](https://github.com/fairinternal/pantheon). 
+Each Pantheon environment instance (pantheon/src/experiments/test.py) can be configured to run
+with a different emulated network setting as obtained from
+https://github.com/StanfordSNR/observatory/blob/master/src/scripts/experiments.yml. The relevant
+trace files in traces/ are copied from https://github.com/StanfordSNR/observatory/tree/master/traces.
 
-You can configure each run of test.py instance by emulating some type of the network. 
-This can be done using trace files. The example configurations for 18 types of network with
-their trace files are done using [Stanford observatory repository](https://github.com/StanfordSNR/observatory).
+## Run Experiments
 
-## Run experiments
+To start the Panthoen env for training, use the following command. This starts `N`
+instances of the environment, each one correponding to an actor in the IMPALA framework.
+Underneath, each env instantiates a rpcenv server to communicate with the learner.
 
-------------------
+`./train/pantheon_env.py --start_port=60000 [-N=18]`
 
-To run experiments just write the following command
-
-`./train/remoteenv.py --start_port=60000 --num_servers=18`
-
-The arguments can be different. If num_servers is more than number of networks to emulate, then 
-it goes round-robin over the emulation examples. 
-
+Each instance corrsponds to a separate emulated network as taken from experiments.yml.
+If `N` is greater than the number of available emulated network types, we round-robin.

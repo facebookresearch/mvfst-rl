@@ -4,4 +4,3 @@
 [submodule "third-party/torchbeast"]
 	path = third-party/torchbeast
 	url = git@github.com:fairinternal/torchbeast.git
-	branch = wheel

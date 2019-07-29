@@ -1,4 +1,3 @@
-from os import path
 import yaml
 import string
 import itertools

@@ -22,6 +22,22 @@ DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");
+DEFINE_int32(cc_env_steps_per_episode, 0,
+             "Number of steps per training episode before the env is reset "
+             "(0 for non-episodic training)");
+DEFINE_double(
+    cc_env_norm_ms, 100.0,
+    "Normalization factor for temporal (in ms) fields in observation");
+DEFINE_double(cc_env_norm_bytes, 1000.0,
+              "Normalization factor for byte fields in observation");
+DEFINE_double(cc_env_reward_throughput_factor, 1.0,
+              "Throughput multiplier in reward");
+DEFINE_double(cc_env_reward_delay_factor, 0.5, "Delay multiplier in reward");
+DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
+              "Packet loss multiplier in reward");
+DEFINE_bool(cc_env_reward_max_delay, false,
+            "Whether to take max delay over observations in reward."
+            "By default, avg delay is used.");
 
 using namespace quic::traffic_gen;
 
@@ -34,8 +50,7 @@ makeRLCongestionControllerFactory() {
   } else if (FLAGS_cc_env_mode == "test") {
     config.mode = quic::CongestionControlEnv::Mode::TEST;
   } else {
-    LOG(ERROR) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
-    throw std::runtime_error("Unknown cc_env_mode");
+    LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
 
   config.rpcPort = FLAGS_cc_env_port;
@@ -45,12 +60,21 @@ makeRLCongestionControllerFactory() {
   } else if (FLAGS_cc_env_agg == "fixed") {
     config.aggregation = quic::CongestionControlEnv::Aggregation::FIXED_WINDOW;
   } else {
-    LOG(ERROR) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
-    throw std::runtime_error("Unknown cc_env_agg");
+    LOG(FATAL) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
   }
   config.windowDuration =
       std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
   config.windowSize = FLAGS_cc_env_fixed_window_size;
+
+  config.stepsPerEpisode = FLAGS_cc_env_steps_per_episode;
+
+  config.normMs = FLAGS_cc_env_norm_ms;
+  config.normBytes = FLAGS_cc_env_norm_bytes;
+
+  config.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
+  config.delayFactor = FLAGS_cc_env_reward_delay_factor;
+  config.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
+  config.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(config);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);

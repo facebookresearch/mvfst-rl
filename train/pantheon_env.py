@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 
+import os
 from os import path
 import argparse
+import logging
 import subprocess
+import utils
 import shlex
 
 import sys
 
 from constants import SRC_DIR, PANTHEON_ROOT
-import utils
+
+logging.basicConfig(level=logging.INFO)
 
 
-parser = argparse.ArgumentParser(description='Remote Environment Server')
+parser = argparse.ArgumentParser(description='Pantheon Environment Server')
 
 parser.add_argument('--start_port', default=60000, type=int, metavar='P',
                     help='Server port for first environment.')
-parser.add_argument('--num_servers', default=4, type=int, metavar='N',
+parser.add_argument('-N', '--num_env', default=4, type=int, metavar='N',
                     help='Number of environment servers.')
 
 
-test_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
+src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
 logs_path = path.join(SRC_DIR, 'train/logs')
 
 
@@ -49,25 +53,44 @@ def run_emu(flags):
 
     processes = []
     n = len(job_queue)
-    for i in range(flags.num_servers):
+    for i in range(flags.num_env):
         job_cfg, cmd = job_queue[i % n]
         log_file_name = path.join(SRC_DIR, "sc_%d.log" % job_cfg['scenario'])
         with open(log_file_name, 'w') as log_f:
             cmd_to_process = get_cmd(cmd, flags.start_port + i)
-            sys.stderr.write('$ %s\n' % ' '.join(cmd_to_process).strip())
-            p = subprocess.Popen(get_cmd(cmd, flags.start_port + i),
+            logging.info('Launch cmd: {}'.format(' '.join(cmd_to_process)))
+            p = subprocess.Popen(cmd_to_process,
                                  stdout=log_f, stderr=log_f)
     for p in processes:
         p.wait()
 
 
 def get_cmd(cmd, port):
-    cmd = shlex.split(cmd) + ['--extra_sender_args',
-                              '--cc_env_port=%d --cc_env_mode=train' % port]
-    cmd[0] = path.abspath(cmd[0])
+    extra_sender_args = [
+        '--cc_env_mode=train',
+        '--cc_env_port={}'.format(port),
+    ]
+    cmd = shlex.split(cmd) + [
+        '--extra_sender_args', ' '.join(extra_sender_args),
+    ]
     return cmd
 
 
 if __name__ == "__main__":
     flags = parser.parse_args()
+
+    # $PATH override to put python2 first for Pantheon
+    result = subprocess.run(
+        ['dirname $(which python2)'],
+        shell=True,
+        stdout=subprocess.PIPE,
+    )
+    python2_path = result.stdout.decode('utf-8').strip()
+    logging.info('Located python2 in {}'.format(python2_path))
+
+    pantheon_env = os.environ.copy()
+    pantheon_env["PATH"] = ':'.join([python2_path, pantheon_env["PATH"]])
+
+    logging.info('Starting {} Pantheon env instances'.format(flags.num_env))
+
     run_emu(flags)

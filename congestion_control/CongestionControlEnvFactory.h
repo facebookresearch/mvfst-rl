@@ -15,7 +15,7 @@ class CongestionControlEnvFactory {
       case CongestionControlEnv::Mode::TRAIN:
         return std::make_unique<CongestionControlRPCEnv>(config_, cob);
       case CongestionControlEnv::Mode::TEST:
-        std::runtime_error("Test mode not yet implemented");
+        LOG(FATAL) << "Test mode not yet implemented";
         break;
     }
   }

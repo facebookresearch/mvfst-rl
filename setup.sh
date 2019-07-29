@@ -115,14 +115,14 @@ setup_torchbeast() {
   echo -e "Installing PyTorch with CUDA for TorchBeast"
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
 
-  python3 -m pip install -r requirements.txt
+  python3 -m pip install -r requirements_polybeast.txt
 
   # Manually install grpc. We need this for mv-rl-fst.
   # Note that this gets installed within the conda prefix which needs to be
   # exported to cmake.
   echo -e "Installing grpc"
   conda install -y -c anaconda protobuf
-  ./install_grpc.sh
+  ./scripts/install_grpc.sh
 
   # We don't necessarily need to install libtorchbeast (we can get that from
   # wheel), but setup.py also generates rpcenv protobuf files within
