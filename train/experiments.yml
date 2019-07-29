@@ -1,3 +1,8 @@
+# Basically copied from 
+# https://github.com/StanfordSNR/observatory/blob/master/src/scripts/experiments.yml
+# Modificated a bit for our purposes.
+
+
 meta:
   branch: master
   base_dir: ~/mv-rl-fst
