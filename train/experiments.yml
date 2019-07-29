@@ -66,7 +66,6 @@ emu:
   matrix:
     flow_scenario:
       - -f 1
-      - -f 3 --interval 10
   macros:
     common_param_set: >-
       local --schemes mvfst_rl --data-dir {data_dir} --pkill-cleanup

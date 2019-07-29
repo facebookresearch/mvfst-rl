@@ -8,3 +8,6 @@ _build/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Logs of pantheon running:
+train/logs/

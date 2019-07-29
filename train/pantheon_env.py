@@ -8,8 +8,6 @@ import subprocess
 import utils
 import shlex
 
-import sys
-
 from constants import SRC_DIR, PANTHEON_ROOT
 
 logging.basicConfig(level=logging.INFO)
@@ -21,14 +19,17 @@ parser.add_argument('--start_port', default=60000, type=int, metavar='P',
                     help='Server port for first environment.')
 parser.add_argument('-N', '--num_env', default=4, type=int, metavar='N',
                     help='Number of environment servers.')
+parser.add_argument('--logs_path', default='train/logs',
+                    type=str, metavar='LOGS_PATH',
+                    help='The path to the folder where logs should stored.')
 
-
+flags = parser.parse_args()
 src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
-logs_path = path.join(SRC_DIR, 'train/logs')
+logs_path = path.join(SRC_DIR, flags.logs_path)
 
 
-def run_emu(flags):
-    sys.stderr.write('----- Running emulation experiments -----\n')
+def run_pantheon(flags):
+    logging.info('----- Running emulation experiments -----\n')
 
     cfg = utils.expt_cfg['emu']
     matrix = utils.expand_matrix(cfg['matrix'])
@@ -77,8 +78,6 @@ def get_cmd(cmd, port):
 
 
 if __name__ == "__main__":
-    flags = parser.parse_args()
-
     # $PATH override to put python2 first for Pantheon
     result = subprocess.run(
         ['dirname $(which python2)'],
@@ -93,4 +92,4 @@ if __name__ == "__main__":
 
     logging.info('Starting {} Pantheon env instances'.format(flags.num_env))
 
-    run_emu(flags)
+    run_pantheon(flags)
