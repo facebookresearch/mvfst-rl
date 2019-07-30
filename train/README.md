@@ -1,7 +1,7 @@
 ## About
 
 The train directory contains all the tools needed to train RL-based congestion control using
-IMPLALA with [Pantheon](https://github.com/fairinternal/pantheon) as the network emulator.
+IMPALA with [Pantheon](https://github.com/StanfordSNR/pantheon) as the network emulator.
 
 Each Pantheon environment instance (pantheon/src/experiments/test.py) can be configured to run
 with a different emulated network setting as obtained from
