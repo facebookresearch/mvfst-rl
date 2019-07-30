@@ -27,7 +27,19 @@ src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
 
 
 def run_pantheon(flags):
-    logging.info('----- Running emulation experiments -----\n')
+    logging.info('Starting {} Pantheon env instances'.format(flags.num_env))
+
+    # $PATH override to put python2 first for Pantheon
+    result = subprocess.run(
+        ['dirname $(which python2)'],
+        shell=True,
+        stdout=subprocess.PIPE,
+    )
+    python2_path = result.stdout.decode('utf-8').strip()
+    logging.info('Located python2 in {}'.format(python2_path))
+
+    pantheon_env = os.environ.copy()
+    pantheon_env["PATH"] = ':'.join([python2_path, pantheon_env["PATH"]])
 
     cfg = utils.expt_cfg['emu']
     matrix = utils.expand_matrix(cfg['matrix'])
@@ -59,38 +71,23 @@ def run_pantheon(flags):
         with open(log_file_name, 'w') as log_f:
             cmd_to_process = get_cmd(cmd, flags.start_port + i)
             logging.info('Launch cmd: {}'.format(' '.join(cmd_to_process)))
-            p = subprocess.Popen(cmd_to_process,
+            p = subprocess.Popen(cmd_to_process, env=pantheon_env,
                                  stdout=log_f, stderr=log_f)
     for p in processes:
         p.wait()
 
 
 def get_cmd(cmd, port):
-    extra_sender_args = [
+    extra_sender_args = ' '.join([
         '--cc_env_mode=train',
         '--cc_env_port={}'.format(port),
-    ]
+    ])
     cmd = shlex.split(cmd) + [
-        '--extra_sender_args', ' '.join(extra_sender_args),
+        '--extra_sender_args="{}"'.format(extra_sender_args),
     ]
     return cmd
 
 
 if __name__ == "__main__":
     flags = parser.parse_args()
-
-    # $PATH override to put python2 first for Pantheon
-    result = subprocess.run(
-        ['dirname $(which python2)'],
-        shell=True,
-        stdout=subprocess.PIPE,
-    )
-    python2_path = result.stdout.decode('utf-8').strip()
-    logging.info('Located python2 in {}'.format(python2_path))
-
-    pantheon_env = os.environ.copy()
-    pantheon_env["PATH"] = ':'.join([python2_path, pantheon_env["PATH"]])
-
-    logging.info('Starting {} Pantheon env instances'.format(flags.num_env))
-
     run_pantheon(flags)

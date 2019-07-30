@@ -1,7 +1,6 @@
 # Basically copied from 
-# https://github.com/StanfordSNR/observatory/blob/master/src/scripts/experiments.yml
-# Modificated a bit for our purposes.
-
+# https://github.com/StanfordSNR/observatory/blob/master/src/scripts/experiments.yml.
+# Modified a bit for our purposes.
 
 meta:
   branch: master
@@ -15,52 +14,6 @@ meta:
   setup_path: {pantheon_root}/src/experiments/setup.py
   analyze_path: {pantheon_root}/src/analysis/analyze.py
   traces_dir: {src_dir}/train/traces
-
-node:
-  matrix:
-    sender_side:
-      - --sender local
-      - --sender remote
-    flow_scenario:
-      - -f 1
-      - -f 3 --interval 10
-  macros:
-    common_param_set: >-
-      remote {slave_addr}:{base_dir} --schemes mvfst_rl
-      --data-dir {data_dir} --pkill-cleanup --tunnel-server local
-      --local-addr {master_ip} --local-desc "{master_desc}"
-      --remote-desc "{slave_desc}" --ntp-addr {ntp_addr}
-  jobs:
-    # cellular (run only if a cellular interface is up)
-    - command: >-
-        {test_path} {common_param_set} --run-times 3
-        {sender_side} {flow_scenario}
-        --local-if {master_eth_if} --remote-if {slave_cell_if} > {job_log} 2>&1
-    # wired (specify network interfaces to detect MTU)
-    - command: >-
-        {test_path} {common_param_set} --run-times 10
-        {sender_side} {flow_scenario}
-        --local-if {master_eth_if} --remote-if {slave_eth_if} > {job_log} 2>&1
-cloud:
-  matrix:
-    sender_side:
-      - --sender local
-      - --sender remote
-    flow_scenario:
-      - -f 1
-      - -f 3 --interval 10
-  macros:
-    common_param_set: >-
-      remote {slave_addr}:{base_dir} --schemes mvfst_rl
-      --data-dir {data_dir} --pkill-cleanup --tunnel-server local
-      --local-addr {master_ip} --local-desc "{master_desc}"
-      --remote-desc "{slave_desc}" --ntp-addr {ntp_addr}
-      --local-if {master_eth_if} --remote-if {slave_eth_if}
-  jobs:
-    # wired (specify network interfaces above to detect MTU)
-    - command: >-
-        {test_path} {common_param_set} --run-times 10
-        {sender_side} {flow_scenario} > {job_log} 2>&1
 
 emu:
   matrix:
