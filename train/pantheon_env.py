@@ -23,9 +23,7 @@ parser.add_argument('--logs_path', default='train/logs',
                     type=str, metavar='LOGS_PATH',
                     help='The path to the folder where logs should stored.')
 
-flags = parser.parse_args()
 src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
-logs_path = path.join(SRC_DIR, flags.logs_path)
 
 
 def run_pantheon(flags):
@@ -33,6 +31,7 @@ def run_pantheon(flags):
 
     cfg = utils.expt_cfg['emu']
     matrix = utils.expand_matrix(cfg['matrix'])
+    logs_path = path.join(SRC_DIR, flags.logs_path)
 
     # create a queue of jobs
     job_queue = []
@@ -78,6 +77,8 @@ def get_cmd(cmd, port):
 
 
 if __name__ == "__main__":
+    flags = parser.parse_args()
+
     # $PATH override to put python2 first for Pantheon
     result = subprocess.run(
         ['dirname $(which python2)'],
