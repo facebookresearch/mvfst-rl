@@ -1,22 +1,33 @@
 #include "CongestionControlRPCEnv.h"
 
+#include <grpc++/grpc++.h>
+
 using namespace grpc;
 using namespace rpcenv;
 
 namespace quic {
 
+namespace {
+constexpr std::chrono::seconds kConnectTimeout{5};
+}
+
 CongestionControlRPCEnv::CongestionControlRPCEnv(
     const CongestionControlEnv::Config& config,
     CongestionControlEnv::Callback* cob)
-    : CongestionControlEnv(config, cob),
-      envServer_(std::make_unique<EnvServer>(this, config.rpcPort)) {
+    : CongestionControlEnv(config, cob) {
+  std::string serverAddress("0.0.0.0:" + std::to_string(config.rpcPort));
+  thread_ = std::make_unique<std::thread>(&CongestionControlRPCEnv::loop, this,
+                                          serverAddress);
   tensor_ = torch::empty({0, Observation::kNumFields}, torch::kFloat32);
-  envServer_->start();
+
+  // Wait until connected to gRPC server
+  std::unique_lock<std::mutex> lock(mutex_);
+  cv_.wait(lock, [&]() -> bool { return connected_; });
 }
 
 CongestionControlRPCEnv::~CongestionControlRPCEnv() {
   shutdown_ = true;
-  envServer_->stop();
+  thread_->join();
 }
 
 void CongestionControlRPCEnv::onObservation(
@@ -31,10 +42,29 @@ void CongestionControlRPCEnv::onObservation(
   cv_.notify_one();
 }
 
-grpc::Status CongestionControlRPCEnv::StreamingEnv(
-    ServerContext* context,
-    ServerReaderWriter<rpcenv::Step, rpcenv::Action>* stream) {
-  LOG(INFO) << "StreamingEnv initiated";
+void CongestionControlRPCEnv::loop(const std::string& address) {
+  std::shared_ptr<grpc::Channel> channel =
+      grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
+  std::unique_ptr<rpcenv::ActorPoolServer::Stub> stub =
+      rpcenv::ActorPoolServer::NewStub(channel);
+
+  LOG(INFO) << "Connecting to ActorPoolServer at "<< address << " ...";
+  const auto& deadline = std::chrono::system_clock::now() + kConnectTimeout;
+  if (!channel->WaitForConnected(deadline)) {
+    LOG(FATAL) << "Timed out connecting to ActorPoolServer: " << address;
+  }
+
+  // Notify that we are connected
+  {
+    std::lock_guard<std::mutex> g(mutex_);
+    connected_ = true;
+  }
+  cv_.notify_one();
+  LOG(INFO) << "Connected to ActorPoolServer: " << address;
+
+  grpc::ClientContext context;
+  std::shared_ptr<grpc::ClientReaderWriter<rpcenv::Step, rpcenv::Action>>
+      stream(stub->StreamingActor(&context));
 
   rpcenv::Step step_pb;
   rpcenv::Action action_pb;
@@ -49,8 +79,12 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
 
     cv_.wait(lock, [&]() -> bool { return (observationReady_ || shutdown_); });
     if (shutdown_) {
-      LOG(INFO) << "StreamingEnv terminating";
-      return grpc::Status::OK;
+      LOG(INFO) << "RPC env loop terminating";
+      const auto& status = stream->Finish();
+      if (!status.ok()) {
+        LOG(ERROR) << "RPC env loop failed on finish.";
+      }
+      break;
     }
 
     episode_return += reward_;
@@ -65,6 +99,7 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
     observationReady_ = false;  // Back to waiting
     lock.unlock();
 
+    // TODO (viswanath): Done and reset impl
     if (done) {
       // Reset episode_* for the _next_ step.
       episode_step = 0;
@@ -79,13 +114,11 @@ grpc::Status CongestionControlRPCEnv::StreamingEnv(
 
     stream->Write(step_pb);
     if (!stream->Read(&action_pb)) {
-      LOG(FATAL) << "Read failed in StreamingEnv";
+      LOG(FATAL) << "Read failed from gRPC server.";
     }
     action.cwndAction = action_pb.action();
     onAction(action);
   }
-
-  return grpc::Status::OK;
 }
 
 void CongestionControlRPCEnv::fillNDArray(rpcenv::NDArray* ndarray,
