@@ -27,7 +27,9 @@ class CongestionControlEnv {
 
   struct Config {
     Mode mode{Mode::TRAIN};
-    uint16_t rpcPort{60000};  // Port for RPCEnv
+
+    // RL server address ("<host>:<port>" or "unix:<path>") for RPC Env.
+    std::string rpcAddress{"unix:/tmp/rl_server_path"};
 
     Aggregation aggregation{Aggregation::TIME_WINDOW};
     std::chrono::milliseconds windowDuration{500};  // Time window duration

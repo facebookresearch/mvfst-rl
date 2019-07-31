@@ -15,9 +15,8 @@ CongestionControlRPCEnv::CongestionControlRPCEnv(
     const CongestionControlEnv::Config& config,
     CongestionControlEnv::Callback* cob)
     : CongestionControlEnv(config, cob) {
-  std::string serverAddress("0.0.0.0:" + std::to_string(config.rpcPort));
   thread_ = std::make_unique<std::thread>(&CongestionControlRPCEnv::loop, this,
-                                          serverAddress);
+                                          config.rpcAddress);
   tensor_ = torch::empty({0, Observation::kNumFields}, torch::kFloat32);
 
   // Wait until connected to gRPC server

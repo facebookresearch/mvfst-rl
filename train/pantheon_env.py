@@ -13,15 +13,17 @@ from constants import SRC_DIR, PANTHEON_ROOT
 logging.basicConfig(level=logging.INFO)
 
 
-parser = argparse.ArgumentParser(description='Pantheon Environment Server')
+parser = argparse.ArgumentParser(description='Pantheon Environment Instances')
 
-parser.add_argument('--start_port', default=60000, type=int, metavar='P',
-                    help='Server port for first environment.')
-parser.add_argument('-N', '--num_env', default=4, type=int, metavar='N',
-                    help='Number of environment servers.')
-parser.add_argument('--logs_path', default='train/logs',
-                    type=str, metavar='LOGS_PATH',
-                    help='The path to the folder where logs should stored.')
+parser.add_argument('-N', '--num_env', type=int, default=4,
+                    help='Number of Pantheon environment instances. '
+                    'This corresponds to number of actors for RL training.')
+parser.add_argument('--server_address', type=str,
+                    default='unix:/tmp/rl_server_path',
+                    help='RL server address - <host>:<port> or unix:<path>')
+parser.add_argument('--logdir', type=str,
+                    default=path.join(SRC_DIR, 'train/logs'),
+                    help='Pantheon logs output directory')
 
 src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
 
@@ -43,7 +45,6 @@ def run_pantheon(flags):
 
     cfg = utils.expt_cfg['emu']
     matrix = utils.expand_matrix(cfg['matrix'])
-    logs_path = path.join(SRC_DIR, flags.logs_path)
 
     # create a queue of jobs
     job_queue = []
@@ -57,7 +58,7 @@ def run_pantheon(flags):
             cmd_tmpl = utils.safe_format(cmd_tmpl, mat_dict)
             # 3. expand meta
             cmd_tmpl = utils.safe_format(cmd_tmpl, utils.meta)
-            data_dir = path.join(logs_path, 'sc_%d' % job_cfg['scenario'])
+            data_dir = path.join(flags.logdir, 'sc_%d' % job_cfg['scenario'])
             cmd_tmpl = utils.safe_format(cmd_tmpl,
                                          {'data_dir': data_dir})
 
@@ -67,20 +68,18 @@ def run_pantheon(flags):
     n = len(job_queue)
     for i in range(flags.num_env):
         job_cfg, cmd = job_queue[i % n]
-        log_file_name = path.join(SRC_DIR, "sc_%d.log" % job_cfg['scenario'])
-        with open(log_file_name, 'w') as log_f:
-            cmd_to_process = get_cmd(cmd, flags.start_port + i)
-            logging.info('Launch cmd: {}'.format(' '.join(cmd_to_process)))
-            p = subprocess.Popen(cmd_to_process, env=pantheon_env,
-                                 stdout=log_f, stderr=log_f)
+        cmd_to_process = get_cmd(cmd, flags)
+        logging.info('Launch cmd: {}'.format(' '.join(cmd_to_process)))
+        p = subprocess.Popen(cmd_to_process, env=pantheon_env)
+        processes.append(p)
     for p in processes:
         p.wait()
 
 
-def get_cmd(cmd, port):
+def get_cmd(cmd, flags):
     extra_sender_args = ' '.join([
         '--cc_env_mode=train',
-        '--cc_env_port={}'.format(port),
+        '--cc_env_rpc_address={}'.format(flags.server_address),
     ])
     cmd = shlex.split(cmd) + [
         '--extra_sender_args="{}"'.format(extra_sender_args),
