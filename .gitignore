@@ -9,5 +9,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Logs of pantheon running:
+# Logs and stuff
 train/logs/
+*checkpoint.tar*

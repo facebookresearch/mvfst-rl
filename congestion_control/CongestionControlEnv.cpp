@@ -19,6 +19,7 @@ CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob)
 
 void CongestionControlEnv::onUpdate(Observation&& obs) {
   // Update the observation with the last action taken
+  // TODO (viswanath): Prev action should be one-hot
   obs[Field::PREV_CWND_ACTION] = prevAction_.cwndAction;
 
   VLOG(4) << obs;
