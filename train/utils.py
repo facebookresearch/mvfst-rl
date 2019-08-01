@@ -8,7 +8,7 @@ from constants import SRC_DIR, PANTHEON_ROOT, EXPERIMENTS_CFG
 
 class SafeDict(dict):
     def __missing__(self, key):
-        return '{' + key + '}'
+        return "{" + key + "}"
 
 
 # format 'format_string' but ignore keys that do not exist in 'key_dict'
@@ -18,13 +18,15 @@ def safe_format(format_string, key_dict):
 
 def parse_experiments():
     with open(EXPERIMENTS_CFG) as cfg:
-        return yaml.load(safe_format(cfg.read(),
-                                     {'src_dir': SRC_DIR,
-                                      'pantheon_root': PANTHEON_ROOT}))
+        return yaml.load(
+            safe_format(
+                cfg.read(), {"src_dir": SRC_DIR, "pantheon_root": PANTHEON_ROOT}
+            )
+        )
 
 
 expt_cfg = parse_experiments()
-meta = expt_cfg['meta']
+meta = expt_cfg["meta"]
 
 
 def expand_matrix(matrix_cfg):
@@ -43,4 +45,4 @@ def expand_matrix(matrix_cfg):
 
 
 def utc_date():
-    return datetime.utcnow().strftime('%Y-%m-%dT%H-%M')
+    return datetime.utcnow().strftime("%Y-%m-%dT%H-%M")
