@@ -47,7 +47,7 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
   std::unique_ptr<rpcenv::ActorPoolServer::Stub> stub =
       rpcenv::ActorPoolServer::NewStub(channel);
 
-  LOG(INFO) << "Connecting to ActorPoolServer at "<< address << " ...";
+  LOG(INFO) << "Connecting to ActorPoolServer at " << address << " ...";
   const auto& deadline = std::chrono::system_clock::now() + kConnectTimeout;
   if (!channel->WaitForConnected(deadline)) {
     LOG(FATAL) << "Timed out connecting to ActorPoolServer: " << address;
@@ -83,7 +83,7 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
       if (!status.ok()) {
         LOG(ERROR) << "RPC env loop failed on finish.";
       }
-      break;
+      return;
     }
 
     episode_return += reward_;
@@ -95,8 +95,9 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
 
     // TODO (viswanath): Think of scenarios where onObservation is too fast
     // and has another state update before stream->Read() gets back.
+    // For now, this would block in onObservation() as the mutex is locked
+    // util the next cv_.wait() call.
     observationReady_ = false;  // Back to waiting
-    lock.unlock();
 
     // TODO (viswanath): Done and reset impl
     if (done) {

@@ -86,7 +86,13 @@ def run_pantheon(flags):
 
 def get_cmd(cmd, flags):
     extra_sender_args = " ".join(
-        ["--cc_env_mode=train", "--cc_env_rpc_address={}".format(flags.server_address)]
+        [
+            "--cc_env_mode=train",
+            "--cc_env_rpc_address={}".format(flags.server_address),
+            # TODO (viswanath): Change agg type
+            "--cc_env_agg=fixed",
+            "--cc_env_fixed_window_size=20",
+        ]
     )
     cmd = shlex.split(cmd) + ['--extra_sender_args="{}"'.format(extra_sender_args)]
     return cmd
