@@ -106,13 +106,6 @@ void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
   cwndBytes_ = cwndBytes;
 }
 
-void RLCongestionController::onReset() noexcept {
-  // Reset to init cwnd
-  cwndBytes_ = conn_.transportSettings.initCwndInMss * conn_.udpSendPacketLen;
-  // TODO (viswanath): Need to flush so that the observations are reset too
-  // given async env?
-}
-
 bool RLCongestionController::setObservation(
     const folly::Optional<AckEvent>& ack,
     const folly::Optional<LossEvent>& loss, Observation& obs) {

@@ -11,11 +11,15 @@ using Field = CongestionControlEnv::Observation::Field;
 
 CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob)
     : config_(config), cob_(CHECK_NOTNULL(cob)), observationTimeout_(this) {
-  observationTimeout_.schedule(config.windowDuration);
+  if (config.aggregation == Aggregation::TIME_WINDOW) {
+    CHECK_GT(config.windowDuration.count(), 0);
+    observationTimeout_.schedule(config.windowDuration);
+  }
 }
 
 void CongestionControlEnv::onUpdate(Observation&& obs) {
   // Update the observation with the last action taken
+  // TODO (viswanath): Prev action should be one-hot
   obs[Field::PREV_CWND_ACTION] = prevAction_.cwndAction;
 
   VLOG(4) << obs;
@@ -38,8 +42,6 @@ void CongestionControlEnv::onAction(const Action& action) {
   // TODO (viswanath): impl, callback
   prevAction_ = action;
 }
-
-void CongestionControlEnv::onReset() { cob_->onReset(); }
 
 void CongestionControlEnv::observationTimeoutExpired() noexcept {
   if (!observations_.empty()) {

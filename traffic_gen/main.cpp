@@ -16,7 +16,10 @@ DEFINE_string(mode, "server", "Mode to run in: 'client' or 'server'");
 DEFINE_int32(chunk_size, 64 * 1024, "Chunk size to send at once");
 DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
 DEFINE_string(cc_env_mode, "test", "CongestionControlEnv mode for RL cc_algo");
-DEFINE_int32(cc_env_port, 60000, "CongestionControlRPCEnv port for RL cc_algo");
+DEFINE_string(
+    cc_env_rpc_address, "unix:/tmp/rl_server_path",
+    "CongestionControlRPCEnv RL server address for training. Could "
+    "be either <host>:<port> or Unix domain socket path unix:<path>.");
 DEFINE_string(cc_env_agg, "time", "State aggregation type for RL cc_algo");
 DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
@@ -53,7 +56,7 @@ makeRLCongestionControllerFactory() {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
 
-  config.rpcPort = FLAGS_cc_env_port;
+  config.rpcAddress = FLAGS_cc_env_rpc_address;
 
   if (FLAGS_cc_env_agg == "time") {
     config.aggregation = quic::CongestionControlEnv::Aggregation::TIME_WINDOW;

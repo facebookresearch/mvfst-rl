@@ -5,6 +5,7 @@ from os import path
 import argparse
 import logging
 import subprocess
+import random
 import utils
 import shlex
 
@@ -13,84 +14,108 @@ from constants import SRC_DIR, PANTHEON_ROOT
 logging.basicConfig(level=logging.INFO)
 
 
-parser = argparse.ArgumentParser(description='Pantheon Environment Server')
+parser = argparse.ArgumentParser(description="Pantheon Environment Instances")
 
-parser.add_argument('--start_port', default=60000, type=int, metavar='P',
-                    help='Server port for first environment.')
-parser.add_argument('-N', '--num_env', default=4, type=int, metavar='N',
-                    help='Number of environment servers.')
-parser.add_argument('--logs_path', default='train/logs',
-                    type=str, metavar='LOGS_PATH',
-                    help='The path to the folder where logs should stored.')
+parser.add_argument(
+    "-N",
+    "--num_env",
+    type=int,
+    default=4,
+    help="Number of Pantheon environment instances. "
+    "This corresponds to number of actors for RL training.",
+)
+parser.add_argument(
+    "--server_address",
+    type=str,
+    default="unix:/tmp/rl_server_path",
+    help="RL server address - <host>:<port> or unix:<path>",
+)
+parser.add_argument(
+    "--logdir",
+    type=str,
+    default=path.join(SRC_DIR, "train/logs"),
+    help="Pantheon logs output directory",
+)
 
-src_path = path.join(PANTHEON_ROOT, 'src/experiments/test.py')
+src_path = path.join(PANTHEON_ROOT, "src/experiments/test.py")
 
 
 def run_pantheon(flags):
-    logging.info('----- Running emulation experiments -----\n')
+    # Each pantheon instance runs for a default of 30s (max 60s allowed).
+    # We treat each such run as a separate episode for training and run randomly
+    # chosen pantheon experiments in parallel.
+    logging.info("Starting {} Pantheon env instances at a time".format(flags.num_env))
 
-    cfg = utils.expt_cfg['emu']
-    matrix = utils.expand_matrix(cfg['matrix'])
-    logs_path = path.join(SRC_DIR, flags.logs_path)
+    jobs = get_pantheon_emulated_jobs(flags)
+    pantheon_env = get_pantheon_env(flags)
+    episode_count = 0
+    while True:
+        processes = []
+        for i in range(flags.num_env):
+            cfg, cmd = random.choice(jobs)  # Pick a random experiment
+            cmd = update_cmd(cmd, flags)
+            logging.debug("Launch cmd: {}".format(" ".join(cmd)))
+            p = subprocess.Popen(cmd, env=pantheon_env)
+            processes.append(p)
 
-    # create a queue of jobs
-    job_queue = []
+        for p in processes:
+            p.wait()
+
+        episode_count += flags.num_env
+        logging.info("Episode count: {}".format(episode_count))
+
+
+def get_pantheon_emulated_jobs(flags):
+    cfg = utils.expt_cfg["emu"]
+    matrix = utils.expand_matrix(cfg["matrix"])
+
+    jobs = []
     for mat_dict in matrix:
-        for job_cfg in cfg['jobs']:
-            cmd_tmpl = job_cfg['command']
+        for job_cfg in cfg["jobs"]:
+            cmd_tmpl = job_cfg["command"]
 
-            # 1. expand macros
-            cmd_tmpl = utils.safe_format(cmd_tmpl, cfg['macros'])
-            # 2. expand variables in mat_dict
+            # 1. Expand macros
+            cmd_tmpl = utils.safe_format(cmd_tmpl, cfg["macros"])
+            # 2. Expand variables in mat_dict
             cmd_tmpl = utils.safe_format(cmd_tmpl, mat_dict)
-            # 3. expand meta
+            # 3. Expand meta
             cmd_tmpl = utils.safe_format(cmd_tmpl, utils.meta)
-            data_dir = path.join(logs_path, 'sc_%d' % job_cfg['scenario'])
-            cmd_tmpl = utils.safe_format(cmd_tmpl,
-                                         {'data_dir': data_dir})
 
-            job_queue.append((job_cfg, cmd_tmpl))
+            data_dir = path.join(flags.logdir, "sc_%d" % job_cfg["scenario"])
+            cmd_tmpl = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
 
-    processes = []
-    n = len(job_queue)
-    for i in range(flags.num_env):
-        job_cfg, cmd = job_queue[i % n]
-        log_file_name = path.join(SRC_DIR, "sc_%d.log" % job_cfg['scenario'])
-        with open(log_file_name, 'w') as log_f:
-            cmd_to_process = get_cmd(cmd, flags.start_port + i)
-            logging.info('Launch cmd: {}'.format(' '.join(cmd_to_process)))
-            p = subprocess.Popen(cmd_to_process,
-                                 stdout=log_f, stderr=log_f)
-    for p in processes:
-        p.wait()
+            jobs.append((job_cfg, cmd_tmpl))
+
+    return jobs
 
 
-def get_cmd(cmd, port):
-    extra_sender_args = [
-        '--cc_env_mode=train',
-        '--cc_env_port={}'.format(port),
-    ]
-    cmd = shlex.split(cmd) + [
-        '--extra_sender_args', ' '.join(extra_sender_args),
-    ]
+def get_pantheon_env(flags):
+    # $PATH override to put python2 first for Pantheon
+    result = subprocess.run(
+        ["dirname $(which python2)"], shell=True, stdout=subprocess.PIPE
+    )
+    python2_path = result.stdout.decode("utf-8").strip()
+    logging.info("Located python2 in {}".format(python2_path))
+
+    pantheon_env = os.environ.copy()
+    pantheon_env["PATH"] = ":".join([python2_path, pantheon_env["PATH"]])
+    return pantheon_env
+
+
+def update_cmd(cmd, flags):
+    extra_sender_args = " ".join(
+        [
+            "--cc_env_mode=train",
+            "--cc_env_rpc_address={}".format(flags.server_address),
+            # TODO (viswanath): Change agg type
+            "--cc_env_agg=fixed",
+            "--cc_env_fixed_window_size=20",
+        ]
+    )
+    cmd = shlex.split(cmd) + ['--extra_sender_args="{}"'.format(extra_sender_args)]
     return cmd
 
 
 if __name__ == "__main__":
     flags = parser.parse_args()
-
-    # $PATH override to put python2 first for Pantheon
-    result = subprocess.run(
-        ['dirname $(which python2)'],
-        shell=True,
-        stdout=subprocess.PIPE,
-    )
-    python2_path = result.stdout.decode('utf-8').strip()
-    logging.info('Located python2 in {}'.format(python2_path))
-
-    pantheon_env = os.environ.copy()
-    pantheon_env["PATH"] = ':'.join([python2_path, pantheon_env["PATH"]])
-
-    logging.info('Starting {} Pantheon env instances'.format(flags.num_env))
-
     run_pantheon(flags)
