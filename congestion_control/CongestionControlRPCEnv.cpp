@@ -68,7 +68,7 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
   rpcenv::Step step_pb;
   rpcenv::Action action_pb;
   Action action;
-  bool done = false;
+  bool done = true;
   uint32_t episode_step = 0;
   float episode_return = 0.0;
   std::unique_lock<std::mutex> lock(mutex_);
@@ -86,31 +86,26 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
       return;
     }
 
+    // The lifetime of a connection is seen as a single episode, so
+    // done is set to true only at the beginning of the episode (to mark
+    // the end of the previous episode. Episodic training should be
+    // implemented via resetting the entire connection.
+    done = (episode_step == 0);
     episode_return += reward_;
+
     fillNDArray(step_pb.mutable_observation()->mutable_array(), tensor_);
     step_pb.set_reward(reward_);
     step_pb.set_done(done);
     step_pb.set_episode_step(episode_step);
     step_pb.set_episode_return(episode_return);
 
+    episode_step++;
+
     // TODO (viswanath): Think of scenarios where onObservation is too fast
     // and has another state update before stream->Read() gets back.
     // For now, this would block in onObservation() as the mutex is locked
     // util the next cv_.wait() call.
     observationReady_ = false;  // Back to waiting
-
-    // TODO (viswanath): Done and reset impl
-    if (done) {
-      // Reset episode_* for the _next_ step.
-      episode_step = 0;
-      episode_return = 0.0;
-      onReset();  // Reset the env
-      // TODO (viswanath): Observations need to be reset too
-    } else {
-      episode_step++;
-      done = (config_.stepsPerEpisode > 0) &&
-             (episode_step == config_.stepsPerEpisode);
-    }
 
     stream->Write(step_pb);
     if (!stream->Read(&action_pb)) {

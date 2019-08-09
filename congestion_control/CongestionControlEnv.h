@@ -137,7 +137,6 @@ class CongestionControlEnv {
   struct Callback {
     virtual ~Callback() = default;
     virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
-    virtual void onReset() noexcept = 0;
   };
 
   CongestionControlEnv(const Config& config, Callback* cob);
@@ -160,10 +159,9 @@ class CongestionControlEnv {
   // asynchronously.
   virtual void onObservation(const std::vector<Observation>& observations) = 0;
 
-  // Callbacks to be invoked by subclasses when there is an update
+  // Callback to be invoked by subclasses when there is an update
   // following onObservation().
   void onAction(const Action& action);
-  void onReset();
 
   const Config& config_;
 

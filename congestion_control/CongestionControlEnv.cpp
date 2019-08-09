@@ -43,8 +43,6 @@ void CongestionControlEnv::onAction(const Action& action) {
   prevAction_ = action;
 }
 
-void CongestionControlEnv::onReset() { cob_->onReset(); }
-
 void CongestionControlEnv::observationTimeoutExpired() noexcept {
   if (!observations_.empty()) {
     onObservation(observations_);

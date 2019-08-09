@@ -53,7 +53,6 @@ class RLCongestionController : public CongestionController,
 
   // CongestionControlEnv::Callback
   void onUpdate(const uint64_t& cwndBytes) noexcept override;
-  void onReset() noexcept override;
 
   bool setObservation(const folly::Optional<AckEvent>& ack,
                       const folly::Optional<LossEvent>& loss,
