@@ -17,6 +17,7 @@ export CUDNN_LIB_DIR="/public/apps/cudnn/v7.3/cuda/lib64"
 
 PYTHONPATH=$PYTHONPATH:"$TORCHBEAST_DIR"
 
+# Unix domain socket path for RL server address
 SOCKET_PATH="/tmp/rl_server_path"
 rm -f $SOCKET_PATH
 

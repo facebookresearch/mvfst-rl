@@ -65,7 +65,7 @@ parser.add_argument("--baseline_cost", default=0.5, type=float,
                     help="Baseline cost/multiplier.")
 parser.add_argument("--discounting", default=0.99, type=float,
                     help="Discounting factor.")
-parser.add_argument("--reward_clipping", default="abs_one",
+parser.add_argument("--reward_clipping", default="none",
                     choices=["abs_one", "soft_asymmetric", "none"],
                     help="Reward clipping.")
 
