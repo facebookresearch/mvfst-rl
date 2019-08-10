@@ -103,7 +103,9 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
 }
 
 void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
-  cwndBytes_ = cwndBytes;
+  cwndBytes_ = boundedCwnd(cwndBytes, conn_.udpSendPacketLen,
+                           conn_.transportSettings.maxCwndInMss,
+                           conn_.transportSettings.minCwndInMss);
 }
 
 bool RLCongestionController::setObservation(
