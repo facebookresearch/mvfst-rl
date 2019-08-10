@@ -96,7 +96,7 @@ setup_libtorch() {
     git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
   fi
   cd "$PYTORCH_DIR"
-  git checkout v1.1.0
+  git checkout v1.2.0
   git submodule sync && git submodule update --init --recursive
   CMAKE_PREFIX_PATH=$CONDA_PREFIX USE_CUDA=0 python3 setup.py install --install-lib="$LIBTORCH_DIR"
 
