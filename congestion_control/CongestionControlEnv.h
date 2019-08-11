@@ -35,9 +35,6 @@ class CongestionControlEnv {
     std::chrono::milliseconds windowDuration{500};  // Time window duration
     uint32_t windowSize{10};                        // Fixed window size
 
-    // Reset interval for env during training. 0 makes it non-episodic.
-    uint32_t stepsPerEpisode{400};
-
     // Normalization factors for observation fields
     float normMs{100.0};
     float normBytes{1000.0};
