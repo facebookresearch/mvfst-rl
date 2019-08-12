@@ -76,7 +76,7 @@ function setup_pantheon() {
   echo -e "Done setting up Pantheon"
 }
 
-setup_libtorch() {
+function setup_libtorch() {
   # Install CPU-only build of PyTorch libs so that C++ executables of
   # mv-rl-fst such as traffic_gen don't need to be unnecessarily linked
   # with CUDA libs, especially during inference.
@@ -92,7 +92,7 @@ setup_libtorch() {
   # issues such as https://github.com/pytorch/pytorch/issues/15138.
   PYTORCH_DIR="$LIBTORCH_DIR/pytorch"
   if [ ! -d "$PYTORCH_DIR" ]; then
-    echo -e "Clonning PyTorch into $PYTORCH_DIR"
+    echo -e "Cloning PyTorch into $PYTORCH_DIR"
     git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
   fi
   cd "$PYTORCH_DIR"
@@ -103,7 +103,7 @@ setup_libtorch() {
   echo -e "Done installing libtorch"
 }
 
-setup_torchbeast() {
+function setup_torchbeast() {
   echo -e "Installing TorchBeast"
   cd "$TORCHBEAST_DIR"
 
@@ -135,7 +135,7 @@ setup_torchbeast() {
   echo -e "Done installing TorchBeast"
 }
 
-setup_mvfst() {
+function setup_mvfst() {
   echo -e "Installing mvfst"
 
   # Build and install mvfst
