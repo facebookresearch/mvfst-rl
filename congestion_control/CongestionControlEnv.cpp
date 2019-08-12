@@ -11,7 +11,7 @@ using Field = CongestionControlEnv::Observation::Field;
 
 CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob)
     : config_(config), cob_(CHECK_NOTNULL(cob)), observationTimeout_(this) {
-  if (config.aggregation == Aggregation::TIME_WINDOW) {
+  if (config.aggregation == Config::Aggregation::TIME_WINDOW) {
     CHECK_GT(config.windowDuration.count(), 0);
     observationTimeout_.schedule(config.windowDuration);
   }
@@ -26,10 +26,10 @@ void CongestionControlEnv::onUpdate(Observation&& obs) {
 
   observations_.emplace_back(std::move(obs));
   switch (config_.aggregation) {
-    case Aggregation::TIME_WINDOW:
+    case Config::Aggregation::TIME_WINDOW:
       DCHECK(observationTimeout_.isScheduled());
       break;
-    case Aggregation::FIXED_WINDOW:
+    case Config::Aggregation::FIXED_WINDOW:
       if (observations_.size() == config_.windowSize) {
         onObservation(observations_);
         observations_.clear();

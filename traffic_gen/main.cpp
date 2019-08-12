@@ -31,6 +31,9 @@ DEFINE_double(
     "Normalization factor for temporal (in ms) fields in observation");
 DEFINE_double(cc_env_norm_bytes, 1000.0,
               "Normalization factor for byte fields in observation");
+DEFINE_string(cc_env_actions, "0,/2,-10,+10,*2",
+              "List of actions specifying how cwnd should be updated. The "
+              "first action is required to be 0 (no-op action).");
 DEFINE_double(cc_env_reward_throughput_factor, 1.0,
               "Throughput multiplier in reward");
 DEFINE_double(cc_env_reward_delay_factor, 0.5, "Delay multiplier in reward");
@@ -41,17 +44,18 @@ DEFINE_bool(cc_env_reward_max_delay, false,
             "By default, avg delay is used.");
 
 using namespace quic::traffic_gen;
+using Config = quic::CongestionControlEnv::Config;
 
 std::shared_ptr<quic::CongestionControllerFactory>
 makeRLCongestionControllerFactory() {
-  quic::CongestionControlEnv::Config config;
+  Config config;
 
   if (FLAGS_cc_env_mode == "train") {
-    config.mode = quic::CongestionControlEnv::Mode::TRAIN;
+    config.mode = Config::Mode::TRAIN;
   } else if (FLAGS_cc_env_mode == "test") {
-    config.mode = quic::CongestionControlEnv::Mode::TEST;
+    config.mode = Config::Mode::TEST;
   } else if (FLAGS_cc_env_mode == "random") {
-    config.mode = quic::CongestionControlEnv::Mode::RANDOM;
+    config.mode = Config::Mode::RANDOM;
   } else {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
@@ -59,9 +63,9 @@ makeRLCongestionControllerFactory() {
   config.rpcAddress = FLAGS_cc_env_rpc_address;
 
   if (FLAGS_cc_env_agg == "time") {
-    config.aggregation = quic::CongestionControlEnv::Aggregation::TIME_WINDOW;
+    config.aggregation = Config::Aggregation::TIME_WINDOW;
   } else if (FLAGS_cc_env_agg == "fixed") {
-    config.aggregation = quic::CongestionControlEnv::Aggregation::FIXED_WINDOW;
+    config.aggregation = Config::Aggregation::FIXED_WINDOW;
   } else {
     LOG(FATAL) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
   }
@@ -71,6 +75,8 @@ makeRLCongestionControllerFactory() {
 
   config.normMs = FLAGS_cc_env_norm_ms;
   config.normBytes = FLAGS_cc_env_norm_bytes;
+
+  config.parseActionsFromString(FLAGS_cc_env_actions);
 
   config.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
   config.delayFactor = FLAGS_cc_env_reward_delay_factor;
