@@ -134,9 +134,9 @@ class CongestionControlEnv {
  private:
   class ObservationTimeout : public folly::HHWheelTimer::Callback {
    public:
-    explicit ObservationTimeout(CongestionControlEnv* env)
-        : env_(CHECK_NOTNULL(env)),
-          evb_(folly::EventBaseManager::get()->getEventBase()) {}
+    explicit ObservationTimeout(CongestionControlEnv* env,
+                                folly::EventBase* evb)
+        : env_(CHECK_NOTNULL(env)), evb_(CHECK_NOTNULL(evb)) {}
     ~ObservationTimeout() override = default;
 
     void schedule(const std::chrono::milliseconds& timeoutMs) noexcept {
@@ -157,6 +157,7 @@ class CongestionControlEnv {
   void observationTimeoutExpired() noexcept;
 
   Callback* cob_{nullptr};
+  folly::EventBase* evb_{nullptr};
   std::vector<Observation> observations_;
   ObservationTimeout observationTimeout_;
   Action prevAction_;

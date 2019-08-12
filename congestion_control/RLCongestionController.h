@@ -60,7 +60,7 @@ class RLCongestionController : public CongestionController,
 
   QuicConnectionStateBase& conn_;
   uint64_t bytesInFlight_{0};
-  std::atomic<uint64_t> cwndBytes_;
+  uint64_t cwndBytes_;
 
   std::unique_ptr<CongestionControlEnv> env_;
 
