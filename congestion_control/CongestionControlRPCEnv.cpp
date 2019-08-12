@@ -112,7 +112,7 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
       LOG(FATAL) << "Read failed from gRPC server.";
     }
     action.cwndAction = action_pb.action();
-    onAction(action);
+    onAction(std::move(action));
   }
 }
 

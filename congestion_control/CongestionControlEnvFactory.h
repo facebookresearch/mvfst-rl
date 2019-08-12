@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CongestionControlRPCEnv.h"
+#include "CongestionControlRandomEnv.h"
 
 namespace quic {
 
@@ -17,6 +18,8 @@ class CongestionControlEnvFactory {
       case CongestionControlEnv::Mode::TEST:
         LOG(FATAL) << "Test mode not yet implemented";
         break;
+      case CongestionControlEnv::Mode::RANDOM:
+        return std::make_unique<CongestionControlRandomEnv>(config_, cob);
     }
   }
 

@@ -15,7 +15,8 @@ DEFINE_int32(port, 6666, "Server port");
 DEFINE_string(mode, "server", "Mode to run in: 'client' or 'server'");
 DEFINE_int32(chunk_size, 64 * 1024, "Chunk size to send at once");
 DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
-DEFINE_string(cc_env_mode, "test", "CongestionControlEnv mode for RL cc_algo");
+DEFINE_string(cc_env_mode, "test",
+              "CongestionControlEnv mode for RL cc_algo - [train|test|random]");
 DEFINE_string(
     cc_env_rpc_address, "unix:/tmp/rl_server_path",
     "CongestionControlRPCEnv RL server address for training. Could "
@@ -49,6 +50,8 @@ makeRLCongestionControllerFactory() {
     config.mode = quic::CongestionControlEnv::Mode::TRAIN;
   } else if (FLAGS_cc_env_mode == "test") {
     config.mode = quic::CongestionControlEnv::Mode::TEST;
+  } else if (FLAGS_cc_env_mode == "random") {
+    config.mode = quic::CongestionControlEnv::Mode::RANDOM;
   } else {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }

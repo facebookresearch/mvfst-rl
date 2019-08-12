@@ -16,6 +16,7 @@ class CongestionControlEnv {
   enum class Mode : uint8_t {
     TRAIN = 0,
     TEST,
+    RANDOM,  // Env that takes random actions
   };
 
   // Type of aggregation to group state updates
@@ -23,6 +24,14 @@ class CongestionControlEnv {
     TIME_WINDOW = 0,  // Group state updates every X ms
     FIXED_WINDOW,     // Group every Y state updates
     // TODO: Other kinds of aggregation (like avg/max/ewma)?
+  };
+
+  enum class ActionOp : uint8_t {
+    NOOP = 0,
+    ADD,
+    SUB,
+    MUL,
+    DIV,
   };
 
   struct Config {
@@ -38,6 +47,12 @@ class CongestionControlEnv {
     // Normalization factors for observation fields
     float normMs{100.0};
     float normBytes{1000.0};
+
+    // Default actions: [noop, cwnd / 2, cwnd - 10, cwnd + 10, cwnd * 2]
+    std::vector<std::pair<ActionOp, float>> actions{
+        {ActionOp::NOOP, 0}, {ActionOp::DIV, 2}, {ActionOp::SUB, 10},
+        {ActionOp::ADD, 10}, {ActionOp::MUL, 2},
+    };
 
     // Multipliers for reward components
     float throughputFactor{1.0};
