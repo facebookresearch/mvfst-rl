@@ -30,7 +30,7 @@ void CongestionControlEnv::onUpdate(Observation&& obs) {
   // Update the observation with the past actions taken
   obs.setPastActions(pastActions_);
 
-  VLOG(4) << obs;
+  VLOG(2) << obs;
 
   observations_.emplace_back(std::move(obs));
   switch (cfg_.aggregation) {
@@ -130,7 +130,7 @@ float Observation::reward(const std::vector<Observation>& observations,
   float reward = cfg.throughputFactor * std::log(throughputBytesPerMs) -
                  cfg.delayFactor * std::log(1 + delayMs) -
                  cfg.packetLossFactor * std::log(1 + lostBytes);
-  VLOG(2) << "Num observations = " << observations.size()
+  VLOG(1) << "Num observations = " << observations.size()
           << ", avg throughput = " << throughputBytesPerMs
           << " bytes/ms, avg delay = " << avgDelayMs
           << " ms, max delay = " << maxDelayMs

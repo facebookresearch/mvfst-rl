@@ -19,7 +19,7 @@ class CongestionControlRandomEnv : public CongestionControlEnv {
     // Random action
     Action action;
     action.cwndAction = std::rand() % cfg_.actions.size();
-    onAction(std::move(action));
+    onAction(action);
   }
 };
 
