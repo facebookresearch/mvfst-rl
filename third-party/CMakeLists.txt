@@ -12,6 +12,7 @@ target_compile_options(
   rpcenv_pb
   PRIVATE
   ${_QUIC_COMMON_COMPILE_OPTIONS}
+  -Wno-overloaded-virtual  # gRPC is noisy
 )
 
 target_link_libraries(

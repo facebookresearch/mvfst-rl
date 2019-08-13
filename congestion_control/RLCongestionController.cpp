@@ -16,27 +16,27 @@ RLCongestionController::RLCongestionController(
     std::shared_ptr<CongestionControlEnvFactory> envFactory)
     : conn_(conn),
       cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
-      env_(envFactory->make(this)),
+      env_(envFactory->make(this, conn)),
       minRTTFilter_(kMinRTTWindowLength.count(), 0us, 0),
       standingRTTFilter_(100000, /*100ms*/
                          0us, 0) {
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
-           << " " << conn_;
+           << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_ << " "
+           << conn_;
 }
 
 void RLCongestionController::onRemoveBytesFromInflight(uint64_t bytes) {
   subtractAndCheckUnderflow(bytesInFlight_, bytes);
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
-           << " " << conn_;
+           << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_ << " "
+           << conn_;
 }
 
 void RLCongestionController::onPacketSent(const OutstandingPacket& packet) {
   addAndCheckOverflow(bytesInFlight_, packet.encodedSize);
 
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+           << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_
            << " bytesBufferred=" << conn_.flowControlState.sumCurStreamBufferLen
            << " packetNum="
            << folly::variant_match(
@@ -55,7 +55,7 @@ void RLCongestionController::onPacketAckOrLoss(
   }
 
   // State update to the env
-  Observation obs;
+  Observation obs = env_->newObservation();
   if (setObservation(ack, loss, obs)) {
     env_->onUpdate(std::move(obs));
   }
@@ -76,8 +76,8 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
 
   VLOG(10) << __func__ << "ack size=" << ack.ackedBytes
            << " num packets acked=" << ack.ackedBytes / conn_.udpSendPacketLen
-           << " writable=" << getWritableBytes()
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
+           << " writable=" << getWritableBytes() << " cwnd=" << cwndBytes_
+           << " inflight=" << bytesInFlight_
            << " sRTT=" << conn_.lossState.srtt.count()
            << " lRTT=" << conn_.lossState.lrtt.count()
            << " mRTT=" << conn_.lossState.mrtt.count()
@@ -90,15 +90,14 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
 
 void RLCongestionController::onPacketLoss(const LossEvent& loss) {
   VLOG(10) << __func__ << " lostBytes=" << loss.lostBytes
-           << " lostPackets=" << loss.lostPackets
-           << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
-           << " " << conn_;
+           << " lostPackets=" << loss.lostPackets << " cwnd=" << cwndBytes_
+           << " inflight=" << bytesInFlight_ << " " << conn_;
   DCHECK(loss.largestLostPacketNum.hasValue());
   subtractAndCheckUnderflow(bytesInFlight_, loss.lostBytes);
   if (loss.persistentCongestion) {
     VLOG(10) << __func__ << " writable=" << getWritableBytes()
-             << " cwnd=" << cwndBytes_.load() << " inflight=" << bytesInFlight_
-             << " " << conn_;
+             << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_ << " "
+             << conn_;
   }
 }
 
@@ -170,16 +169,15 @@ bool RLCongestionController::setObservation(
 }
 
 uint64_t RLCongestionController::getWritableBytes() const noexcept {
-  const uint64_t cwndBytes = cwndBytes_.load();
-  if (bytesInFlight_ > cwndBytes) {
+  if (bytesInFlight_ > cwndBytes_) {
     return 0;
   } else {
-    return cwndBytes - bytesInFlight_;
+    return cwndBytes_ - bytesInFlight_;
   }
 }
 
 uint64_t RLCongestionController::getCongestionWindow() const noexcept {
-  return cwndBytes_.load();
+  return cwndBytes_;
 }
 
 CongestionControlType RLCongestionController::type() const noexcept {

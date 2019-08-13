@@ -41,6 +41,7 @@ list(APPEND
   -Wnon-virtual-dtor
   # disable noisy stuff
   -Wno-unused-parameter
+  -Wno-narrowing
 )
 
 # Find GFlags
