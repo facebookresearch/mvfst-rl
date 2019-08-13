@@ -7,7 +7,6 @@
 namespace quic {
 
 struct CongestionControlEnvConfig {
-
   /// Definitions
 
   enum class Mode : uint8_t {
@@ -45,6 +44,9 @@ struct CongestionControlEnvConfig {
   // Normalization factors for observation fields
   float normMs{100.0};
   float normBytes{1000.0};
+
+  // Number of past actions taken to include in observation
+  uint32_t numPastActions{2};
 
   // Default actions: [noop, cwnd / 2, cwnd - 10, cwnd + 10, cwnd * 2]
   std::vector<std::pair<ActionOp, float>> actions{

@@ -7,25 +7,29 @@ namespace quic {
 
 class CongestionControlEnvFactory {
  public:
-  CongestionControlEnvFactory(const CongestionControlEnv::Config& config)
-      : config_(config) {}
+  CongestionControlEnvFactory(const CongestionControlEnv::Config& cfg)
+      : cfg_(cfg) {}
 
   std::unique_ptr<CongestionControlEnv> make(
       CongestionControlEnv::Callback* cob,
       const QuicConnectionStateBase& conn) {
-    switch (config_.mode) {
+    switch (cfg_.mode) {
       case CongestionControlEnv::Config::Mode::TRAIN:
-        return std::make_unique<CongestionControlRPCEnv>(config_, cob, conn);
+        return std::make_unique<CongestionControlRPCEnv>(cfg_, cob, conn);
       case CongestionControlEnv::Config::Mode::TEST:
         LOG(FATAL) << "Test mode not yet implemented";
-        break;
+        return nullptr;
       case CongestionControlEnv::Config::Mode::RANDOM:
-        return std::make_unique<CongestionControlRandomEnv>(config_, cob, conn);
+        return std::make_unique<CongestionControlRandomEnv>(cfg_, cob, conn);
+      default:
+        LOG(FATAL) << "Unknown mode";
+        return nullptr;
     }
+    __builtin_unreachable();
   }
 
  private:
-  CongestionControlEnv::Config config_;
+  CongestionControlEnv::Config cfg_;
 };
 
 }  // namespace quic

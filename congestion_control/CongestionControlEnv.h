@@ -57,20 +57,18 @@ class CongestionControlEnv {
       LOST,
       PERSISTENT_CONGESTION,
 
-      // Previous action taken
-      PREV_CWND_ACTION,
-
       // Total number of fields
       NUM_FIELDS
     };
 
-    static constexpr uint16_t kNumFields =
-        static_cast<uint16_t>(Field::NUM_FIELDS);
-
-    Observation() : data_(kNumFields, 0.0) {}
+    Observation(const Config& cfg)
+        : cfg_(cfg),
+          size_(static_cast<size_t>(Field::NUM_FIELDS) +
+                cfg.numPastActions * cfg.actions.size()),
+          data_(size_, 0.0) {}
 
     inline const float* data() const { return data_.data(); }
-    inline constexpr uint16_t size() const { return kNumFields; }
+    inline constexpr size_t size() const { return size_; }
 
     inline float operator[](int idx) const { return data_[idx]; }
     inline float operator[](Field field) const {
@@ -83,6 +81,19 @@ class CongestionControlEnv {
 
     inline void setField(const Field field, const float& value) {
       data_[static_cast<int>(field)] = value;
+    }
+
+    template <class Container>
+    void setPastActions(const Container& pastActions) {
+      CHECK_EQ(pastActions.size(), cfg_.numPastActions);
+
+      // Encode past actions as one-hot
+      size_t offset = static_cast<size_t>(Field::NUM_FIELDS);
+      std::fill(data_.begin() + offset, data_.end(), 0.0);
+      for (size_t i = 0; i < cfg_.numPastActions; ++i) {
+        data_[offset + pastActions[i].cwndAction] = 1.0;
+        offset += cfg_.actions.size();
+      }
     }
 
     static float reward(const std::vector<Observation>& observations,
@@ -98,6 +109,8 @@ class CongestionControlEnv {
     static std::string fieldToString(const Field field);
 
    private:
+    const Config& cfg_;
+    const size_t size_;
     std::vector<float> data_;
   };
 
@@ -106,19 +119,21 @@ class CongestionControlEnv {
     virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
   };
 
-  CongestionControlEnv(const Config& config, Callback* cob,
+  CongestionControlEnv(const Config& cfg, Callback* cob,
                        const QuicConnectionStateBase& conn);
   virtual ~CongestionControlEnv() = default;
+
+  inline Observation newObservation() const { return Observation(cfg_); }
 
   // To be invoked by whoever owns CongestionControlEnv (such as
   // RLCongestionController) to share Observation updates after every
   // Ack/Loss event.
   void onUpdate(Observation&& observation);
 
-  inline const Config& config() const { return config_; }
+  inline const Config& config() const { return cfg_; }
 
-  inline float normMs() const { return config_.normMs; }
-  inline float normBytes() const { return config_.normBytes; }
+  inline float normMs() const { return cfg_.normMs; }
+  inline float normBytes() const { return cfg_.normBytes; }
 
  protected:
   // onObservation() will be triggered when there are enough state updates to
@@ -131,7 +146,7 @@ class CongestionControlEnv {
   // following onObservation().
   void onAction(const Action& action);
 
-  const Config& config_;
+  const Config& cfg_;
 
  private:
   class ObservationTimeout : public folly::HHWheelTimer::Callback {
@@ -163,10 +178,10 @@ class CongestionControlEnv {
   Callback* cob_{nullptr};
   const QuicConnectionStateBase& conn_;
   uint64_t cwndBytes_;
-  folly::EventBase* evb_{nullptr};
   std::vector<Observation> observations_;
+  std::deque<Action> pastActions_;
+  folly::EventBase* evb_{nullptr};
   ObservationTimeout observationTimeout_;
-  Action prevAction_;
 };
 
 std::ostream& operator<<(std::ostream& os,

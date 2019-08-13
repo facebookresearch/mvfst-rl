@@ -26,6 +26,8 @@ DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");
+DEFINE_int32(cc_env_num_past_actions, 2,
+             "Number of past actions taken to include in observation");
 DEFINE_double(
     cc_env_norm_ms, 100.0,
     "Normalization factor for temporal (in ms) fields in observation");
@@ -48,42 +50,43 @@ using Config = quic::CongestionControlEnv::Config;
 
 std::shared_ptr<quic::CongestionControllerFactory>
 makeRLCongestionControllerFactory() {
-  Config config;
+  Config cfg;
 
   if (FLAGS_cc_env_mode == "train") {
-    config.mode = Config::Mode::TRAIN;
+    cfg.mode = Config::Mode::TRAIN;
   } else if (FLAGS_cc_env_mode == "test") {
-    config.mode = Config::Mode::TEST;
+    cfg.mode = Config::Mode::TEST;
   } else if (FLAGS_cc_env_mode == "random") {
-    config.mode = Config::Mode::RANDOM;
+    cfg.mode = Config::Mode::RANDOM;
   } else {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
 
-  config.rpcAddress = FLAGS_cc_env_rpc_address;
+  cfg.rpcAddress = FLAGS_cc_env_rpc_address;
 
   if (FLAGS_cc_env_agg == "time") {
-    config.aggregation = Config::Aggregation::TIME_WINDOW;
+    cfg.aggregation = Config::Aggregation::TIME_WINDOW;
   } else if (FLAGS_cc_env_agg == "fixed") {
-    config.aggregation = Config::Aggregation::FIXED_WINDOW;
+    cfg.aggregation = Config::Aggregation::FIXED_WINDOW;
   } else {
     LOG(FATAL) << "Unknown cc_env_agg: " << FLAGS_cc_env_agg;
   }
-  config.windowDuration =
-      std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
-  config.windowSize = FLAGS_cc_env_fixed_window_size;
+  cfg.windowDuration = std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
+  cfg.windowSize = FLAGS_cc_env_fixed_window_size;
 
-  config.normMs = FLAGS_cc_env_norm_ms;
-  config.normBytes = FLAGS_cc_env_norm_bytes;
+  cfg.numPastActions = FLAGS_cc_env_num_past_actions;
 
-  config.parseActionsFromString(FLAGS_cc_env_actions);
+  cfg.normMs = FLAGS_cc_env_norm_ms;
+  cfg.normBytes = FLAGS_cc_env_norm_bytes;
 
-  config.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
-  config.delayFactor = FLAGS_cc_env_reward_delay_factor;
-  config.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
-  config.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
+  cfg.parseActionsFromString(FLAGS_cc_env_actions);
 
-  auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(config);
+  cfg.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
+  cfg.delayFactor = FLAGS_cc_env_reward_delay_factor;
+  cfg.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
+  cfg.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
+
+  auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(cfg);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);
 }
 

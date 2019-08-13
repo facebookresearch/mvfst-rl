@@ -12,7 +12,7 @@ namespace quic {
 
 class CongestionControlRPCEnv : public CongestionControlEnv {
  public:
-  CongestionControlRPCEnv(const CongestionControlEnv::Config& config,
+  CongestionControlRPCEnv(const CongestionControlEnv::Config& cfg,
                           CongestionControlEnv::Callback* cob,
                           const QuicConnectionStateBase& conn);
   ~CongestionControlRPCEnv() override;

@@ -55,7 +55,7 @@ void RLCongestionController::onPacketAckOrLoss(
   }
 
   // State update to the env
-  Observation obs;
+  Observation obs = env_->newObservation();
   if (setObservation(ack, loss, obs)) {
     env_->onUpdate(std::move(obs));
   }

@@ -1,5 +1,6 @@
 #include "CongestionControlEnv.h"
 
+#include <folly/Conv.h>
 #include <quic/congestion_control/CongestionControlFunctions.h>
 #include <torch/torch.h>
 
@@ -10,34 +11,34 @@ using Field = CongestionControlEnv::Observation::Field;
 
 /// CongestionControlEnv impl
 
-CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob,
+CongestionControlEnv::CongestionControlEnv(const Config& cfg, Callback* cob,
                                            const QuicConnectionStateBase& conn)
-    : config_(config),
+    : cfg_(cfg),
       cob_(CHECK_NOTNULL(cob)),
       conn_(conn),
       cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
+      pastActions_(cfg.numPastActions, Action{0}),  // NOOP past actions
       evb_(folly::EventBaseManager::get()->getEventBase()),
       observationTimeout_(this, evb_) {
-  if (config.aggregation == Config::Aggregation::TIME_WINDOW) {
-    CHECK_GT(config.windowDuration.count(), 0);
-    observationTimeout_.schedule(config.windowDuration);
+  if (cfg.aggregation == Config::Aggregation::TIME_WINDOW) {
+    CHECK_GT(cfg.windowDuration.count(), 0);
+    observationTimeout_.schedule(cfg.windowDuration);
   }
 }
 
 void CongestionControlEnv::onUpdate(Observation&& obs) {
-  // Update the observation with the last action taken
-  // TODO (viswanath): Prev action should be one-hot
-  obs[Field::PREV_CWND_ACTION] = prevAction_.cwndAction;
+  // Update the observation with the past actions taken
+  obs.setPastActions(pastActions_);
 
   VLOG(4) << obs;
 
   observations_.emplace_back(std::move(obs));
-  switch (config_.aggregation) {
+  switch (cfg_.aggregation) {
     case Config::Aggregation::TIME_WINDOW:
       DCHECK(observationTimeout_.isScheduled());
       break;
     case Config::Aggregation::FIXED_WINDOW:
-      if (observations_.size() == config_.windowSize) {
+      if (observations_.size() == cfg_.windowSize) {
         onObservation(observations_);
         observations_.clear();
       }
@@ -49,7 +50,10 @@ void CongestionControlEnv::onAction(const Action& action) {
   evb_->runImmediatelyOrRunInEventBaseThreadAndWait([this, action] {
     updateCwnd(action.cwndAction);
     cob_->onUpdate(cwndBytes_);
-    prevAction_ = action;
+
+    // Keep track of past actions taken
+    pastActions_.pop_front();
+    pastActions_.push_back(action);
   });
 }
 
@@ -58,13 +62,13 @@ void CongestionControlEnv::observationTimeoutExpired() noexcept {
     onObservation(observations_);
     observations_.clear();
   }
-  observationTimeout_.schedule(config_.windowDuration);
+  observationTimeout_.schedule(cfg_.windowDuration);
 }
 
 void CongestionControlEnv::updateCwnd(const uint32_t actionIdx) {
-  DCHECK_LT(actionIdx, config_.actions.size());
-  const auto& op = config_.actions[actionIdx].first;
-  const auto& val = config_.actions[actionIdx].second;
+  DCHECK_LT(actionIdx, cfg_.actions.size());
+  const auto& op = cfg_.actions[actionIdx].first;
+  const auto& val = cfg_.actions[actionIdx].second;
 
   switch (op) {
     case Config::ActionOp::NOOP:
@@ -153,7 +157,12 @@ torch::Tensor Observation::toTensor(
 
 void Observation::toTensor(const std::vector<Observation>& observations,
                            torch::Tensor& tensor) {
-  tensor.resize_({observations.size(), Observation::kNumFields});
+  if (observations.empty()) {
+    tensor.resize_({0});
+    return;
+  }
+
+  tensor.resize_({observations.size(), observations[0].size()});
   auto tensor_a = tensor.accessor<float, 2>();
   for (int i = 0; i < tensor_a.size(0); ++i) {
     for (int j = 0; j < tensor_a.size(1); ++j) {
@@ -208,19 +217,15 @@ std::string Observation::fieldToString(const Field field) {
       return "LOST";
     case Field::PERSISTENT_CONGESTION:
       return "PERSISTENT_CONGESTION";
-    case Field::PREV_CWND_ACTION:
-      return "PREV_CWND_ACTION";
-    case Field::NUM_FIELDS:
-      return "NUM_FIELDS";
     default:
-      LOG(FATAL) << "Unknown field";
+      return "Field " + folly::to<std::string>(static_cast<int>(field));
   }
   __builtin_unreachable();
 }
 
 std::ostream& operator<<(std::ostream& os, const Observation& obs) {
   os << "Observation (" << obs.size() << " fields):" << std::endl;
-  for (int i = 0; i < obs.size(); ++i) {
+  for (size_t i = 0; i < obs.size(); ++i) {
     os << i << ". " << Observation::fieldToString(i) << " = " << obs[i]
        << std::endl;
   }

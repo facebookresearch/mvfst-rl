@@ -12,12 +12,12 @@ constexpr std::chrono::seconds kConnectTimeout{5};
 }
 
 CongestionControlRPCEnv::CongestionControlRPCEnv(
-    const CongestionControlEnv::Config& config,
+    const CongestionControlEnv::Config& cfg,
     CongestionControlEnv::Callback* cob, const QuicConnectionStateBase& conn)
-    : CongestionControlEnv(config, cob, conn) {
+    : CongestionControlEnv(cfg, cob, conn) {
   thread_ = std::make_unique<std::thread>(&CongestionControlRPCEnv::loop, this,
-                                          config.rpcAddress);
-  tensor_ = torch::empty({0, Observation::kNumFields}, torch::kFloat32);
+                                          cfg.rpcAddress);
+  tensor_ = torch::empty({0}, torch::kFloat32);
 
   // Wait until connected to gRPC server
   std::unique_lock<std::mutex> lock(mutex_);
@@ -31,7 +31,7 @@ CongestionControlRPCEnv::~CongestionControlRPCEnv() {
 
 void CongestionControlRPCEnv::onObservation(
     const std::vector<Observation>& observations) {
-  float reward = Observation::reward(observations, config_);
+  float reward = Observation::reward(observations, cfg_);
   {
     std::lock_guard<std::mutex> g(mutex_);
     Observation::toTensor(observations, tensor_);
