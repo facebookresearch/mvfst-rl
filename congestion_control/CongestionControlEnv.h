@@ -3,6 +3,7 @@
 #include <folly/io/async/EventBaseManager.h>
 #include <folly/io/async/HHWheelTimer.h>
 #include <glog/logging.h>
+#include <quic/state/StateData.h>
 #include <torch/torch.h>
 
 #include <chrono>
@@ -19,7 +20,7 @@ class CongestionControlEnv {
 
   struct Action {
     // This assumes that the policy has a no-op action at index 0
-    int32_t cwndAction{0};
+    uint32_t cwndAction{0};
   };
 
   struct Observation {
@@ -105,7 +106,8 @@ class CongestionControlEnv {
     virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
   };
 
-  CongestionControlEnv(const Config& config, Callback* cob);
+  CongestionControlEnv(const Config& config, Callback* cob,
+                       const QuicConnectionStateBase& conn);
   virtual ~CongestionControlEnv() = default;
 
   // To be invoked by whoever owns CongestionControlEnv (such as
@@ -156,7 +158,11 @@ class CongestionControlEnv {
 
   void observationTimeoutExpired() noexcept;
 
+  void updateCwnd(const uint32_t actionIdx);
+
   Callback* cob_{nullptr};
+  const QuicConnectionStateBase& conn_;
+  uint64_t cwndBytes_;
   folly::EventBase* evb_{nullptr};
   std::vector<Observation> observations_;
   ObservationTimeout observationTimeout_;

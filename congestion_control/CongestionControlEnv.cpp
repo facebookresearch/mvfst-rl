@@ -1,5 +1,6 @@
 #include "CongestionControlEnv.h"
 
+#include <quic/congestion_control/CongestionControlFunctions.h>
 #include <torch/torch.h>
 
 namespace quic {
@@ -9,9 +10,12 @@ using Field = CongestionControlEnv::Observation::Field;
 
 /// CongestionControlEnv impl
 
-CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob)
+CongestionControlEnv::CongestionControlEnv(const Config& config, Callback* cob,
+                                           const QuicConnectionStateBase& conn)
     : config_(config),
       cob_(CHECK_NOTNULL(cob)),
+      conn_(conn),
+      cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
       evb_(folly::EventBaseManager::get()->getEventBase()),
       observationTimeout_(this, evb_) {
   if (config.aggregation == Config::Aggregation::TIME_WINDOW) {
@@ -43,7 +47,8 @@ void CongestionControlEnv::onUpdate(Observation&& obs) {
 
 void CongestionControlEnv::onAction(const Action& action) {
   evb_->runImmediatelyOrRunInEventBaseThreadAndWait([this, action] {
-    // TODO (viswanath): impl, callback
+    updateCwnd(action.cwndAction);
+    cob_->onUpdate(cwndBytes_);
     prevAction_ = action;
   });
 }
@@ -54,6 +59,36 @@ void CongestionControlEnv::observationTimeoutExpired() noexcept {
     observations_.clear();
   }
   observationTimeout_.schedule(config_.windowDuration);
+}
+
+void CongestionControlEnv::updateCwnd(const uint32_t actionIdx) {
+  DCHECK_LT(actionIdx, config_.actions.size());
+  const auto& op = config_.actions[actionIdx].first;
+  const auto& val = config_.actions[actionIdx].second;
+
+  switch (op) {
+    case Config::ActionOp::NOOP:
+      break;
+    case Config::ActionOp::ADD:
+      cwndBytes_ += val * conn_.udpSendPacketLen;
+      break;
+    case Config::ActionOp::SUB:
+      cwndBytes_ -= val * conn_.udpSendPacketLen;
+      break;
+    case Config::ActionOp::MUL:
+      cwndBytes_ = std::round(cwndBytes_ * val);
+      break;
+    case Config::ActionOp::DIV:
+      cwndBytes_ = std::round(cwndBytes_ * 1.0 / val);
+      break;
+    default:
+      LOG(FATAL) << "Unknown ActionOp";
+      break;
+  }
+
+  cwndBytes_ = boundedCwnd(cwndBytes_, conn_.udpSendPacketLen,
+                           conn_.transportSettings.maxCwndInMss,
+                           conn_.transportSettings.minCwndInMss);
 }
 
 /// CongestionControlEnv::Observation impl

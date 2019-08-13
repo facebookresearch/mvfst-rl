@@ -16,7 +16,7 @@ RLCongestionController::RLCongestionController(
     std::shared_ptr<CongestionControlEnvFactory> envFactory)
     : conn_(conn),
       cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
-      env_(envFactory->make(this)),
+      env_(envFactory->make(this, conn)),
       minRTTFilter_(kMinRTTWindowLength.count(), 0us, 0),
       standingRTTFilter_(100000, /*100ms*/
                          0us, 0) {
@@ -102,9 +102,7 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
 }
 
 void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
-  cwndBytes_ = boundedCwnd(cwndBytes, conn_.udpSendPacketLen,
-                           conn_.transportSettings.maxCwndInMss,
-                           conn_.transportSettings.minCwndInMss);
+  cwndBytes_ = cwndBytes;
 }
 
 bool RLCongestionController::setObservation(

@@ -9,8 +9,9 @@ namespace quic {
 class CongestionControlRandomEnv : public CongestionControlEnv {
  public:
   CongestionControlRandomEnv(const CongestionControlEnv::Config& config,
-                             CongestionControlEnv::Callback* cob)
-      : CongestionControlEnv(config, cob) {}
+                             CongestionControlEnv::Callback* cob,
+                             const QuicConnectionStateBase& conn)
+      : CongestionControlEnv(config, cob, conn) {}
 
  private:
   // CongestionControlEnv impl

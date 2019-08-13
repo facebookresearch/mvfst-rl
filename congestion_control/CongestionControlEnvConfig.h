@@ -7,6 +7,7 @@
 namespace quic {
 
 struct CongestionControlEnvConfig {
+
   /// Definitions
 
   enum class Mode : uint8_t {
