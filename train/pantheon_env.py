@@ -113,9 +113,6 @@ def update_cmd(cmd, flags):
         [
             "--cc_env_mode=train",
             "--cc_env_rpc_address={}".format(flags.server_address),
-            # TODO (viswanath): Change agg type
-            "--cc_env_agg=fixed",
-            "--cc_env_fixed_window_size=20",
             "-v={}".format(flags.v),
         ]
     )

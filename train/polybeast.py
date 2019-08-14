@@ -382,7 +382,7 @@ def train(flags):
     )
 
     # TODO (viswanath): cleanup
-    dim = 20 * 20 + 2 * 6
+    dim = 5 * 20 + 2 * 6
     model = Net(observation_size=(dim,), num_actions=5, use_lstm=flags.use_lstm)
     model = model.to(device=flags.learner_device)
 

@@ -2,7 +2,6 @@
 
 #include <folly/Conv.h>
 #include <quic/congestion_control/CongestionControlFunctions.h>
-#include <torch/torch.h>
 
 namespace quic {
 
@@ -69,17 +68,61 @@ void CongestionControlEnv::handleStates() {
     return;
   }
 
+  // Compute reward based on original states
   const auto& reward = computeReward(states_);
 
-  // TODO (viswanath): aggregation
   Observation obs(cfg_);
-  obs.states = std::move(states_);
-  states_.clear();
   std::copy(history_.begin(), history_.end(), std::back_inserter(obs.history));
+
+  // For time-window based aggregation, compute a summary of states.
+  // Keep states as they are for fixed window. This makes sure batching across
+  // actors is possible in both scenarios.
+  // This could be improved in many ways such as subsampling, etc., but this
+  // should do for now.
+  obs.states = (cfg_.aggregation == Config::Aggregation::TIME_WINDOW)
+                   ? stateSummary(states_)
+                   : std::move(states_);
+  states_.clear();
 
   VLOG(2) << __func__ << ' ' << obs;
 
   onObservation(std::move(obs), reward);
+}
+
+std::vector<NetworkState> CongestionControlEnv::stateSummary(
+    const std::vector<NetworkState>& states) {
+  // Compute sum, mean, std, min, max for each field
+  int dim = 0;
+  bool keepdim = true;
+  NetworkState::toTensor(states, summaryTensor_);
+  const auto& sum = torch::sum(summaryTensor_, dim, keepdim);
+  const auto& std_mean = torch::std_mean(summaryTensor_, dim, true, keepdim);
+  const auto& min = torch::min_values(summaryTensor_, dim, keepdim);
+  const auto& max = torch::max_values(summaryTensor_, dim, keepdim);
+  const auto& summary = torch::cat(
+      {sum, std::get<1>(std_mean), std::get<0>(std_mean), min, max}, dim);
+  auto summaryStates = NetworkState::fromTensor(summary);
+
+  // Certain stats for some fields don't make sense such as sum over
+  // RTT from ACKs. Zero-out them.
+  static const std::vector<Field> invalidSumFields = {
+      Field::RTT_MIN, Field::RTT_STANDING, Field::LRTT,
+      Field::SRTT,    Field::RTT_VAR,      Field::DELAY,
+      Field::CWND,    Field::IN_FLIGHT,    Field::WRITABLE,
+  };
+  for (const Field field : invalidSumFields) {
+    summaryStates[0][field] = 0.0;
+  }
+
+  static const std::vector<std::string> keys = {
+      "Sum", "Mean", "Std", "Min", "Max",
+  };
+  VLOG(2) << "State summary: ";
+  for (size_t i = 0; i < summaryStates.size(); ++i) {
+    VLOG(2) << keys[i] << ": " << summaryStates[i];
+  }
+
+  return summaryStates;
 }
 
 float CongestionControlEnv::computeReward(
@@ -156,7 +199,7 @@ void CongestionControlEnv::updateCwnd(const uint32_t actionIdx) {
 /// CongestionControlEnv::Observation impl
 
 torch::Tensor CongestionControlEnv::Observation::toTensor() const {
-  torch::Tensor tensor;
+  torch::Tensor tensor = torch::empty({0}, torch::kFloat32);
   toTensor(tensor);
   return tensor;
 }

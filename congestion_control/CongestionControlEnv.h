@@ -100,8 +100,9 @@ class CongestionControlEnv {
   };
 
   void observationTimeoutExpired() noexcept;
-
   void handleStates();
+  std::vector<NetworkState> stateSummary(
+      const std::vector<NetworkState>& states);
   float computeReward(const std::vector<NetworkState>& states) const;
   void updateCwnd(const uint32_t actionIdx);
 
@@ -113,6 +114,9 @@ class CongestionControlEnv {
   uint64_t cwndBytes_;
   std::vector<NetworkState> states_;
   std::deque<History> history_;
+
+  // Intermediate tensor for compute state summary
+  torch::Tensor summaryTensor_{torch::empty({0}, torch::kFloat32)};
 };
 
 std::ostream& operator<<(std::ostream& os,

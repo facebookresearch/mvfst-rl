@@ -1,5 +1,6 @@
 #pragma once
 
+#include <torch/torch.h>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,14 @@ struct NetworkState {
   inline void setField(const Field field, const float& value) {
     data_[static_cast<int>(field)] = value;
   }
+
+  torch::Tensor toTensor() const;
+  void toTensor(torch::Tensor& tensor) const;
+  static torch::Tensor toTensor(const std::vector<NetworkState>& states);
+  static void toTensor(const std::vector<NetworkState>& states,
+                       torch::Tensor& tensor);
+
+  static std::vector<NetworkState> fromTensor(const torch::Tensor& tensor);
 
   static std::string fieldToString(const uint16_t field);
   static std::string fieldToString(const Field field);

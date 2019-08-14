@@ -29,7 +29,8 @@ class CongestionControlRPCEnv : public CongestionControlEnv {
   bool connected_{false};  // Whether we are connected to gRPC server
   std::atomic<bool> shutdown_{false};  // Signals termination of env loop
 
-  torch::Tensor tensor_;  // Tensor holding observations
+  // Tensor for holding observations
+  torch::Tensor tensor_{torch::empty({0}, torch::kFloat32)};
   float reward_;
   bool observationReady_{false};
 
