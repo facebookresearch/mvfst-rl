@@ -36,6 +36,12 @@ parser.add_argument(
     default=path.join(SRC_DIR, "train/logs"),
     help="Pantheon logs output directory",
 )
+parser.add_argument(
+    "-v",
+    type=int,
+    default=0,
+    help="Verbose log-level for Pantheon sender",
+)
 
 src_path = path.join(PANTHEON_ROOT, "src/experiments/test.py")
 
@@ -110,6 +116,7 @@ def update_cmd(cmd, flags):
             # TODO (viswanath): Change agg type
             "--cc_env_agg=fixed",
             "--cc_env_fixed_window_size=20",
+            "-v={}".format(flags.v),
         ]
     )
     cmd = shlex.split(cmd) + ['--extra_sender_args="{}"'.format(extra_sender_args)]

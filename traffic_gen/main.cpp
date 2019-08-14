@@ -26,8 +26,12 @@ DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");
-DEFINE_int32(cc_env_num_past_actions, 2,
-             "Number of past actions taken to include in observation");
+DEFINE_bool(cc_env_use_state_summary, true,
+            "Whether to use state summary instead of raw states in "
+            "observation (auto-enabled for TIME_WINDOW)");
+DEFINE_int32(
+    cc_env_history_size, 2,
+    "Length of history (such as past actions) to include in observation");
 DEFINE_double(
     cc_env_norm_ms, 100.0,
     "Normalization factor for temporal (in ms) fields in observation");
@@ -73,8 +77,9 @@ makeRLCongestionControllerFactory() {
   }
   cfg.windowDuration = std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
   cfg.windowSize = FLAGS_cc_env_fixed_window_size;
+  cfg.useStateSummary = FLAGS_cc_env_use_state_summary;
 
-  cfg.numPastActions = FLAGS_cc_env_num_past_actions;
+  cfg.historySize = FLAGS_cc_env_history_size;
 
   cfg.normMs = FLAGS_cc_env_norm_ms;
   cfg.normBytes = FLAGS_cc_env_norm_bytes;
@@ -112,7 +117,6 @@ int main(int argc, char* argv[]) {
   } else if (FLAGS_cc_algo == "bbr") {
     cc_algo = quic::CongestionControlType::BBR;
   } else if (FLAGS_cc_algo == "rl") {
-    // TODO: Update cc_algo type
     cc_algo = quic::CongestionControlType::None;
     ccFactory = makeRLCongestionControllerFactory();
   } else if (FLAGS_cc_algo == "none") {

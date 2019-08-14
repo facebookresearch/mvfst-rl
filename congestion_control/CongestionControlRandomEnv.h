@@ -8,18 +8,17 @@ namespace quic {
 
 class CongestionControlRandomEnv : public CongestionControlEnv {
  public:
-  CongestionControlRandomEnv(const CongestionControlEnv::Config& cfg,
-                             CongestionControlEnv::Callback* cob,
+  CongestionControlRandomEnv(const Config& cfg, Callback* cob,
                              const QuicConnectionStateBase& conn)
       : CongestionControlEnv(cfg, cob, conn) {}
 
  private:
   // CongestionControlEnv impl
-  void onObservation(const std::vector<Observation>& observations) override {
+  void onObservation(Observation&& obs, float reward) override {
     // Random action
     Action action;
     action.cwndAction = std::rand() % cfg_.actions.size();
-    onAction(std::move(action));
+    onAction(action);
   }
 };
 

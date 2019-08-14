@@ -162,7 +162,7 @@ class Net(nn.Module):
         # one_hot_last_action = torch.zeros(T * B, self.num_actions)
         # one_hot_last_action.scatter_(1, last_action, 1)
 
-        # TODO (viswanath): prev action as one_hot, reward clipping?
+        # TODO (viswanath): reward clipping?
         # clipped_reward = torch.clamp(inputs["reward"], -1, 1).view(T * B, 1)
         # core_input = torch.cat(
         #    [x, clipped_reward, one_hot_last_action], dim=-1)
@@ -382,10 +382,11 @@ def train(flags):
     )
 
     # TODO (viswanath): cleanup
-    model = Net(observation_size=(20, 30), num_actions=5, use_lstm=flags.use_lstm)
+    dim = 5 * 20 + 2 * 6
+    model = Net(observation_size=(dim,), num_actions=5, use_lstm=flags.use_lstm)
     model = model.to(device=flags.learner_device)
 
-    actor_model = Net(observation_size=(20, 30), num_actions=5, use_lstm=flags.use_lstm)
+    actor_model = Net(observation_size=(dim,), num_actions=5, use_lstm=flags.use_lstm)
     actor_model.to(device=flags.actor_device)
 
     # The ActorPool that will accept connections from actor clients.

@@ -3,6 +3,7 @@ add_library(
   CongestionControlEnv.cpp
   CongestionControlEnvConfig.cpp
   CongestionControlRPCEnv.cpp
+  NetworkState.cpp
   RLCongestionController.cpp
 )
 

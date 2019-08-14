@@ -2,14 +2,14 @@
 #include <quic/congestion_control/CongestionControlFunctions.h>
 #include <quic/congestion_control/Copa.h>
 
-#include <congestion_control/RLCongestionController.h>
+#include "NetworkState.h"
+#include "RLCongestionController.h"
 
 namespace quic {
 
 using namespace std::chrono;
 
-using Observation = CongestionControlEnv::Observation;
-using Field = CongestionControlEnv::Observation::Field;
+using Field = NetworkState::Field;
 
 RLCongestionController::RLCongestionController(
     QuicConnectionStateBase& conn,
@@ -55,9 +55,9 @@ void RLCongestionController::onPacketAckOrLoss(
   }
 
   // State update to the env
-  Observation obs = env_->newObservation();
-  if (setObservation(ack, loss, obs)) {
-    env_->onUpdate(std::move(obs));
+  NetworkState obs;
+  if (setNetworkState(ack, loss, obs)) {
+    env_->onNetworkState(std::move(obs));
   }
 }
 
@@ -105,9 +105,9 @@ void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
   cwndBytes_ = cwndBytes;
 }
 
-bool RLCongestionController::setObservation(
+bool RLCongestionController::setNetworkState(
     const folly::Optional<AckEvent>& ack,
-    const folly::Optional<LossEvent>& loss, Observation& obs) {
+    const folly::Optional<LossEvent>& loss, NetworkState& obs) {
   const auto& state = conn_.lossState;
 
   const auto& rttMin = minRTTFilter_.GetBest();
@@ -115,9 +115,10 @@ bool RLCongestionController::setObservation(
   const auto& delay =
       duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count();
   if (rttStanding == 0 || delay < 0) {
-    LOG(ERROR) << "Invalid rttStanding or delay, skipping observation: "
-               << "rttStanding = " << rttStanding << ", delay = " << delay
-               << " " << conn_;
+    LOG(ERROR)
+        << "Invalid rttStanding or delay, skipping network state update: "
+        << "rttStanding = " << rttStanding << ", delay = " << delay << " "
+        << conn_;
     return false;
   }
 
@@ -181,14 +182,13 @@ uint64_t RLCongestionController::getCongestionWindow() const noexcept {
 }
 
 CongestionControlType RLCongestionController::type() const noexcept {
-  // TODO: Update mvfst with new cc type. Just return None for now.
   return CongestionControlType::None;
 }
 
 void RLCongestionController::setConnectionEmulation(uint8_t) noexcept {}
 
 bool RLCongestionController::canBePaced() const noexcept {
-  // TODO: Think about pacing. Not supported for now.
+  // Pacing not supported for now
   return false;
 }
 

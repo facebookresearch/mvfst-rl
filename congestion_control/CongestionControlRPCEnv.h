@@ -12,14 +12,13 @@ namespace quic {
 
 class CongestionControlRPCEnv : public CongestionControlEnv {
  public:
-  CongestionControlRPCEnv(const CongestionControlEnv::Config& cfg,
-                          CongestionControlEnv::Callback* cob,
+  CongestionControlRPCEnv(const Config& cfg, Callback* cob,
                           const QuicConnectionStateBase& conn);
   ~CongestionControlRPCEnv() override;
 
  private:
   // CongestionControlEnv impl
-  void onObservation(const std::vector<Observation>& observations) override;
+  void onObservation(Observation&& obs, float reward) override;
 
   void loop(const std::string& address);
 
@@ -30,7 +29,8 @@ class CongestionControlRPCEnv : public CongestionControlEnv {
   bool connected_{false};  // Whether we are connected to gRPC server
   std::atomic<bool> shutdown_{false};  // Signals termination of env loop
 
-  torch::Tensor tensor_;  // Tensor holding observations
+  // Tensor for holding observations
+  torch::Tensor tensor_{torch::empty({0}, torch::kFloat32)};
   float reward_;
   bool observationReady_{false};
 

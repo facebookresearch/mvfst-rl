@@ -54,9 +54,9 @@ class RLCongestionController : public CongestionController,
   // CongestionControlEnv::Callback
   void onUpdate(const uint64_t& cwndBytes) noexcept override;
 
-  bool setObservation(const folly::Optional<AckEvent>& ack,
-                      const folly::Optional<LossEvent>& loss,
-                      CongestionControlEnv::Observation& observation);
+  bool setNetworkState(const folly::Optional<AckEvent>& ack,
+                       const folly::Optional<LossEvent>& loss,
+                       NetworkState& obs);
 
   QuicConnectionStateBase& conn_;
   uint64_t bytesInFlight_{0};
