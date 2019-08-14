@@ -12,14 +12,13 @@ namespace quic {
 
 class CongestionControlRPCEnv : public CongestionControlEnv {
  public:
-  CongestionControlRPCEnv(const CongestionControlEnv::Config& cfg,
-                          CongestionControlEnv::Callback* cob,
+  CongestionControlRPCEnv(const Config& cfg, Callback* cob,
                           const QuicConnectionStateBase& conn);
   ~CongestionControlRPCEnv() override;
 
  private:
   // CongestionControlEnv impl
-  void onObservation(const std::vector<Observation>& observations) override;
+  void onObservation(Observation&& obs, float reward) override;
 
   void loop(const std::string& address);
 

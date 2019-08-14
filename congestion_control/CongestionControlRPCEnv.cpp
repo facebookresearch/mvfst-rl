@@ -12,8 +12,7 @@ constexpr std::chrono::seconds kConnectTimeout{5};
 }
 
 CongestionControlRPCEnv::CongestionControlRPCEnv(
-    const CongestionControlEnv::Config& cfg,
-    CongestionControlEnv::Callback* cob, const QuicConnectionStateBase& conn)
+    const Config& cfg, Callback* cob, const QuicConnectionStateBase& conn)
     : CongestionControlEnv(cfg, cob, conn) {
   thread_ = std::make_unique<std::thread>(&CongestionControlRPCEnv::loop, this,
                                           cfg.rpcAddress);
@@ -29,12 +28,10 @@ CongestionControlRPCEnv::~CongestionControlRPCEnv() {
   thread_->join();
 }
 
-void CongestionControlRPCEnv::onObservation(
-    const std::vector<Observation>& observations) {
-  float reward = Observation::reward(observations, cfg_);
+void CongestionControlRPCEnv::onObservation(Observation&& obs, float reward) {
   {
     std::lock_guard<std::mutex> g(mutex_);
-    Observation::toTensor(observations, tensor_);
+    obs.toTensor(tensor_);
     reward_ = reward;
     observationReady_ = true;
   }
@@ -105,10 +102,11 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
 
     episode_step++;
 
-    // TODO (viswanath): Think of scenarios where onObservation is too fast
+    // In theory, it is possible that onObservation could sometimes be too fast
     // and has another state update before stream->Read() gets back.
     // For now, this would block in onObservation() as the mutex is locked
-    // util the next cv_.wait() call.
+    // until the next cv_.wait() call. In reality, this shouldn't be a problem
+    // as model runtimes are sufficiently fast.
     observationReady_ = false;  // Back to waiting
 
     stream->Write(step_pb);

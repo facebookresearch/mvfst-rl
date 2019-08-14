@@ -19,7 +19,6 @@ struct CongestionControlEnvConfig {
   enum class Aggregation : uint8_t {
     TIME_WINDOW = 0,  // Group state updates every X ms
     FIXED_WINDOW,     // Group every Y state updates
-    // TODO: Other kinds of aggregation (like avg/max/ewma)?
   };
 
   enum class ActionOp : uint8_t {
@@ -45,8 +44,8 @@ struct CongestionControlEnvConfig {
   float normMs{100.0};
   float normBytes{1000.0};
 
-  // Number of past actions taken to include in observation
-  uint32_t numPastActions{2};
+  // Size of history (such as past actions) to include in observation
+  uint32_t historySize{2};
 
   // Default actions: [noop, cwnd / 2, cwnd - 10, cwnd + 10, cwnd * 2]
   std::vector<std::pair<ActionOp, float>> actions{
