@@ -26,6 +26,9 @@ DEFINE_int32(cc_env_time_window_ms, 500,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");
+DEFINE_bool(cc_env_use_state_summary, true,
+            "Whether to use state summary instead of raw states in "
+            "observation (auto-enabled for TIME_WINDOW)");
 DEFINE_int32(
     cc_env_history_size, 2,
     "Length of history (such as past actions) to include in observation");
@@ -74,6 +77,7 @@ makeRLCongestionControllerFactory() {
   }
   cfg.windowDuration = std::chrono::milliseconds(FLAGS_cc_env_time_window_ms);
   cfg.windowSize = FLAGS_cc_env_fixed_window_size;
+  cfg.useStateSummary = FLAGS_cc_env_use_state_summary;
 
   cfg.historySize = FLAGS_cc_env_history_size;
 

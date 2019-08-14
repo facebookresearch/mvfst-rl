@@ -39,6 +39,8 @@ struct CongestionControlEnvConfig {
   Aggregation aggregation{Aggregation::TIME_WINDOW};
   std::chrono::milliseconds windowDuration{500};  // Time window duration
   uint32_t windowSize{10};                        // Fixed window size
+  bool useStateSummary{true};  // Whether to use state summary instead of raw
+                               // states (auto-enabled for TIME_WINDOW).
 
   // Normalization factors for observation fields
   float normMs{100.0};

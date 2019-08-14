@@ -101,10 +101,16 @@ class CongestionControlEnv {
 
   void observationTimeoutExpired() noexcept;
   void handleStates();
-  std::vector<NetworkState> stateSummary(
-      const std::vector<NetworkState>& states);
   float computeReward(const std::vector<NetworkState>& states) const;
   void updateCwnd(const uint32_t actionIdx);
+
+  inline bool useStateSummary() const {
+    return cfg_.useStateSummary ||
+           (cfg_.aggregation == Config::Aggregation::TIME_WINDOW);
+  }
+
+  std::vector<NetworkState> stateSummary(
+      const std::vector<NetworkState>& states);
 
   Callback* cob_{nullptr};
   const QuicConnectionStateBase& conn_;

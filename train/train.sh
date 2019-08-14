@@ -45,6 +45,7 @@ rm -f $SOCKET_PATH
 # Start pantheon_env.py in the background
 PANTHEON_LOG="$LOG_DIR"/pantheon.log
 python3 $ROOT_DIR/train/pantheon_env.py \
+  -v 1 \
   --num_env "$NUM_ENV" \
   > "$PANTHEON_LOG" 2>&1 &
 PANTHEON_PID=$!

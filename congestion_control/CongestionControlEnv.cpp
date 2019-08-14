@@ -72,17 +72,9 @@ void CongestionControlEnv::handleStates() {
   const auto& reward = computeReward(states_);
 
   Observation obs(cfg_);
-  std::copy(history_.begin(), history_.end(), std::back_inserter(obs.history));
-
-  // For time-window based aggregation, compute a summary of states.
-  // Keep states as they are for fixed window. This makes sure batching across
-  // actors is possible in both scenarios.
-  // This could be improved in many ways such as subsampling, etc., but this
-  // should do for now.
-  obs.states = (cfg_.aggregation == Config::Aggregation::TIME_WINDOW)
-                   ? stateSummary(states_)
-                   : std::move(states_);
+  obs.states = useStateSummary() ? stateSummary(states_) : std::move(states_);
   states_.clear();
+  std::copy(history_.begin(), history_.end(), std::back_inserter(obs.history));
 
   VLOG(2) << __func__ << ' ' << obs;
 
