@@ -162,7 +162,7 @@ class Net(nn.Module):
         # one_hot_last_action = torch.zeros(T * B, self.num_actions)
         # one_hot_last_action.scatter_(1, last_action, 1)
 
-        # TODO (viswanath): prev action as one_hot, reward clipping?
+        # TODO (viswanath): reward clipping?
         # clipped_reward = torch.clamp(inputs["reward"], -1, 1).view(T * B, 1)
         # core_input = torch.cat(
         #    [x, clipped_reward, one_hot_last_action], dim=-1)

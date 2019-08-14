@@ -52,7 +52,7 @@ PANTHEON_PID=$!
 echo "Pantheon started with $NUM_ENV parallel environments (pid: $PANTHEON_PID). Logfile: $PANTHEON_LOG."
 
 # Start the trainer
-# TODO (viswanath): More params, also start pantheon_env.py
+# TODO (viswanath): More params
 PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
   --address "unix:$SOCKET_PATH"
 
