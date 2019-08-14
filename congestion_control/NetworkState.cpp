@@ -60,47 +60,47 @@ std::string NetworkState::fieldToString(const uint16_t field) {
 std::string NetworkState::fieldToString(const Field field) {
   switch (field) {
     case Field::RTT_MIN:
-      return "RTT_MIN";
+      return "rtt_min";
     case Field::RTT_STANDING:
-      return "RTT_STANDING";
+      return "rtt_standing";
     case Field::LRTT:
-      return "LRTT";
+      return "lrtt";
     case Field::SRTT:
-      return "SRTT";
+      return "srtt";
     case Field::RTT_VAR:
-      return "RTT_VAR";
+      return "rtt_var";
     case Field::DELAY:
-      return "DELAY";
+      return "delay";
     case Field::CWND:
-      return "CWND";
+      return "cwnd";
     case Field::IN_FLIGHT:
-      return "IN_FLIGHT";
+      return "in_flight";
     case Field::WRITABLE:
-      return "WRITABLE";
+      return "writable";
     case Field::SENT:
-      return "SENT";
+      return "sent";
     case Field::RECEIVED:
-      return "RECEIVED";
+      return "received";
     case Field::RETRANSMITTED:
-      return "RETRANSMITTED";
+      return "retransmitted";
     case Field::PTO_COUNT:
-      return "PTO_COUNT";
+      return "pto_count";
     case Field::TOTAL_PTO_DELTA:
-      return "TOTAL_PTO_DELTA";
+      return "total_pto_delta";
     case Field::RTX_COUNT:
-      return "RTX_COUNT";
+      return "rtx_count";
     case Field::TIMEOUT_BASED_RTX_COUNT:
-      return "TIMEOUT_BASED_RTX_COUNT";
+      return "timeout_based_rtx_count";
     case Field::ACKED:
-      return "ACKED";
+      return "acked";
     case Field::THROUGHPUT:
-      return "THROUGHPUT";
+      return "throughput";
     case Field::LOST:
-      return "LOST";
+      return "lost";
     case Field::PERSISTENT_CONGESTION:
-      return "PERSISTENT_CONGESTION";
+      return "persistent_congestion";
     case Field::NUM_FIELDS:
-      return "NUM_FIELDS";
+      return "num_fields";
     default:
       LOG(FATAL) << "Unknown field";
       break;
