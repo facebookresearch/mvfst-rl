@@ -35,7 +35,7 @@ parser.add_argument(
 parser.add_argument(
     "--logdir",
     type=str,
-    default=path.join(SRC_DIR, "train/logs"),
+    default=path.join(SRC_DIR, "train/logs/pantheon"),
     help="Pantheon logs output directory",
 )
 parser.add_argument(
@@ -51,26 +51,35 @@ def run_pantheon(flags):
     # chosen pantheon experiments in parallel.
     logging.info("Starting {} Pantheon env instances at a time".format(flags.num_env))
 
-    def pantheon_runner(thread_id, cmds, env):
+    def pantheon_runner(tid, jobs, env):
+        episode = 0
         while True:
-            # Pick and run a random experiment
-            i = random.choice(range(len(cmds)))
-            cmd = cmds[i]
+            # Pick a random experiment to run
+            i = random.choice(range(len(jobs)))
+            cfg, cmd_tmpl = jobs[i]
+
+            # Expand data_dir in cmd template
+            data_dir = path.join(
+                flags.logdir, "tid{}_run{}_expt{}".format(tid, episode, i)
+            )
+            cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
+            cmd = update_cmd(cmd, flags)
+
             logging.info(
-                "Thread: {}, experiment; {}, cmd: {}".format(
-                    thread_id, i, " ".join(cmd)
+                "Thread: {}, episode: {}, experiment: {}, cmd: {}".format(
+                    tid, episode, i, " ".join(cmd)
                 )
             )
             p = subprocess.Popen(cmd, env=env)
             p.wait()
+            episode += 1
 
     jobs = get_pantheon_emulated_jobs(flags)
-    cmds = [update_cmd(cmd, flags) for cfg, cmd in jobs]
     pantheon_env = get_pantheon_env(flags)
 
     threads = []
     for i in range(flags.num_env):
-        thread = threading.Thread(target=pantheon_runner, args=(i, cmds, pantheon_env))
+        thread = threading.Thread(target=pantheon_runner, args=(i, jobs, pantheon_env))
         thread.start()
         threads.append(thread)
         # Stagger the beginning of each thread to avoid some errors due to
@@ -89,19 +98,13 @@ def get_pantheon_emulated_jobs(flags):
     for mat_dict in matrix:
         for job_cfg in cfg["jobs"]:
             cmd_tmpl = job_cfg["command"]
-
             # 1. Expand macros
             cmd_tmpl = utils.safe_format(cmd_tmpl, cfg["macros"])
             # 2. Expand variables in mat_dict
             cmd_tmpl = utils.safe_format(cmd_tmpl, mat_dict)
             # 3. Expand meta
             cmd_tmpl = utils.safe_format(cmd_tmpl, utils.meta)
-
-            data_dir = path.join(flags.logdir, "sc_%d" % job_cfg["scenario"])
-            cmd_tmpl = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
-
             jobs.append((job_cfg, cmd_tmpl))
-
     return jobs
 
 
