@@ -24,7 +24,7 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
                 CongestionControlType cc_algo = CongestionControlType::Cubic,
                 std::shared_ptr<CongestionControllerFactory> ccFactory =
                     std::make_shared<DefaultCongestionControllerFactory>())
-      : host_(host), port_(port), cc_algo_(cc_algo), ccFactory_(ccFactory) {}
+      : addr_(host.c_str(), port), cc_algo_(cc_algo), ccFactory_(ccFactory) {}
 
   void readAvailable(quic::StreamId streamId) noexcept override {
     auto readData = quicClient_->read(streamId, 0);
@@ -38,8 +38,9 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
     } else {
       recvOffsets_[streamId] += copy->length();
     }
-    VLOG(2) << "Client received data=" << copy->computeChainDataLength()
-            << " bytes on stream=" << streamId;
+    VLOG_EVERY_N(2, 1000) << "Client received data="
+                          << copy->computeChainDataLength()
+                          << " bytes on stream=" << streamId;
   }
 
   void readError(
@@ -69,7 +70,7 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
   }
 
   void onTransportReady() noexcept override {
-    LOG(INFO) << "ExampleClient connected";
+    LOG(INFO) << "ExampleClient connected to " << addr_.describe();
     auto streamId = quicClient_->createBidirectionalStream().value();
     quicClient_->setReadCallback(streamId, this);
     pendingOutput_[streamId].append(folly::IOBuf::copyBuffer("hello"));
@@ -82,7 +83,10 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
 
   void onConnectionError(
       std::pair<quic::QuicErrorCode, std::string> error) noexcept override {
-    LOG(ERROR) << "ExampleClient error: " << toString(error.first);
+    LOG_EVERY_N(ERROR, 100) << "ExampleClient error connecting to "
+                            << addr_.describe() << " - "
+                            << toString(error.first) << ". Trying again...";
+    connect();
   }
 
   void onStreamWriteReady(quic::StreamId id,
@@ -106,34 +110,37 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
               << " bytes skipped on stream=" << streamId;
   }
 
+  void connect() {
+    auto sock = std::make_unique<folly::AsyncUDPSocket>(evb_);
+    quicClient_ =
+        std::make_shared<quic::QuicClientTransport>(evb_, std::move(sock));
+    quicClient_->setHostname("example.org");
+    quicClient_->setCertificateVerifier(
+        std::make_unique<DummyCertificateVerifier>());
+    quicClient_->addNewPeerAddress(addr_);
+    quicClient_->setCongestionControllerFactory(ccFactory_);
+
+    TransportSettings settings;
+    settings.defaultCongestionController = cc_algo_;
+    quicClient_->setTransportSettings(settings);
+
+    quicClient_->start(this);
+  }
+
   void start() {
     folly::ScopedEventBaseThread networkThread("ExampleClientThread");
     evb_ = networkThread.getEventBase();
-    folly::SocketAddress addr(host_.c_str(), port_);
 
     evb_->runInEventBaseThreadAndWait([&] {
-      auto sock = std::make_unique<folly::AsyncUDPSocket>(evb_);
-      quicClient_ =
-          std::make_shared<quic::QuicClientTransport>(evb_, std::move(sock));
-      quicClient_->setHostname("example.org");
-      quicClient_->setCertificateVerifier(
-          std::make_unique<DummyCertificateVerifier>());
-      quicClient_->addNewPeerAddress(addr);
-      quicClient_->setCongestionControllerFactory(ccFactory_);
-
-      TransportSettings settings;
-      settings.defaultCongestionController = cc_algo_;
-      quicClient_->setTransportSettings(settings);
-
-      LOG(INFO) << "ExampleClient connecting to " << addr.describe();
-      quicClient_->start(this);
+      LOG(INFO) << "ExampleClient connecting to " << addr_.describe();
+      connect();
     });
 
     // Loop forever
     while (true) {
     }
 
-    LOG(INFO) << "ExampleClient stopping client";
+    LOG(INFO) << "ExampleClient stopping";
   }
 
   ~ExampleClient() override = default;
@@ -159,8 +166,7 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
     }
   }
 
-  std::string host_;
-  uint16_t port_;
+  folly::SocketAddress addr_;
   CongestionControlType cc_algo_;
   std::shared_ptr<CongestionControllerFactory> ccFactory_;
 
