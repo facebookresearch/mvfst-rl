@@ -6,8 +6,10 @@ import argparse
 import logging
 import subprocess
 import random
-import utils
 import shlex
+import threading
+import time
+import utils
 
 from constants import SRC_DIR, PANTHEON_ROOT
 
@@ -37,10 +39,7 @@ parser.add_argument(
     help="Pantheon logs output directory",
 )
 parser.add_argument(
-    "-v",
-    type=int,
-    default=0,
-    help="Verbose log-level for Pantheon sender",
+    "-v", type=int, default=0, help="Verbose log-level for Pantheon sender"
 )
 
 src_path = path.join(PANTHEON_ROOT, "src/experiments/test.py")
@@ -52,23 +51,34 @@ def run_pantheon(flags):
     # chosen pantheon experiments in parallel.
     logging.info("Starting {} Pantheon env instances at a time".format(flags.num_env))
 
-    jobs = get_pantheon_emulated_jobs(flags)
-    pantheon_env = get_pantheon_env(flags)
-    episode_count = 0
-    while True:
-        processes = []
-        for i in range(flags.num_env):
-            cfg, cmd = random.choice(jobs)  # Pick a random experiment
-            cmd = update_cmd(cmd, flags)
-            logging.debug("Launch cmd: {}".format(" ".join(cmd)))
-            p = subprocess.Popen(cmd, env=pantheon_env)
-            processes.append(p)
-
-        for p in processes:
+    def pantheon_runner(thread_id, cmds, env):
+        while True:
+            # Pick and run a random experiment
+            i = random.choice(range(len(cmds)))
+            cmd = cmds[i]
+            logging.info(
+                "Thread: {}, experiment; {}, cmd: {}".format(
+                    thread_id, i, " ".join(cmd)
+                )
+            )
+            p = subprocess.Popen(cmd, env=env)
             p.wait()
 
-        episode_count += flags.num_env
-        logging.info("Episode count: {}".format(episode_count))
+    jobs = get_pantheon_emulated_jobs(flags)
+    cmds = [update_cmd(cmd, flags) for cfg, cmd in jobs]
+    pantheon_env = get_pantheon_env(flags)
+
+    threads = []
+    for i in range(flags.num_env):
+        thread = threading.Thread(target=pantheon_runner, args=(i, cmds, pantheon_env))
+        thread.start()
+        threads.append(thread)
+        # Stagger the beginning of each thread to avoid some errors due to
+        # starting a bunch of Pantheon tunnels at once.
+        time.sleep(1)
+
+    for thread in threads:
+        thread.join()
 
 
 def get_pantheon_emulated_jobs(flags):
