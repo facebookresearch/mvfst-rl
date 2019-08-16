@@ -77,7 +77,7 @@ class ExampleServer {
     // Create a SocketAddress and the default or passed in host.
     folly::SocketAddress addr(host_.c_str(), port_);
     server_->start(addr, 0);
-    LOG(INFO) << "Example server started at: " << addr.describe();
+    LOG(INFO) << "ExampleServer started at: " << addr.describe();
     eventbase_.loopForever();
   }
 

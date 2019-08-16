@@ -18,11 +18,11 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
-CUR_DIR=$(dirname "$0")
+CUR_DIR=$(dirname "$(realpath -s "$0")")
 ROOT_DIR="$CUR_DIR"/..
 TORCHBEAST_DIR="$ROOT_DIR"/third-party/torchbeast
 
-LOG_DIR="/tmp/logs"
+LOG_DIR="$CUR_DIR/logs"
 mkdir -p $LOG_DIR
 
 module unload cuda
@@ -42,11 +42,15 @@ PYTHONPATH=$PYTHONPATH:"$TORCHBEAST_DIR"
 SOCKET_PATH="/tmp/rl_server_path"
 rm -f $SOCKET_PATH
 
+PANTHEON_LOG_DIR="$LOG_DIR/pantheon"
+mkdir -p $PANTHEON_LOG_DIR
+PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
+
 # Start pantheon_env.py in the background
-PANTHEON_LOG="$LOG_DIR"/pantheon.log
 python3 $ROOT_DIR/train/pantheon_env.py \
-  -v 1 \
   --num_env "$NUM_ENV" \
+  -v 0 \
+  --logdir "$PANTHEON_LOG_DIR" \
   > "$PANTHEON_LOG" 2>&1 &
 PANTHEON_PID=$!
 echo "Pantheon started with $NUM_ENV parallel environments (pid: $PANTHEON_PID). Logfile: $PANTHEON_LOG."
@@ -58,3 +62,4 @@ PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
 
 echo "Done training, killing pantheon."
 kill -9 "$PANTHEON_PID"
+pkill -9 -f "pantheon"
