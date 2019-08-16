@@ -37,7 +37,7 @@ struct CongestionControlEnvConfig {
   std::string rpcAddress{"unix:/tmp/rl_server_path"};
 
   Aggregation aggregation{Aggregation::TIME_WINDOW};
-  std::chrono::milliseconds windowDuration{500};  // Time window duration
+  std::chrono::milliseconds windowDuration{100};  // Time window duration
   uint32_t windowSize{10};                        // Fixed window size
   bool useStateSummary{true};  // Whether to use state summary instead of raw
                                // states (auto-enabled for TIME_WINDOW).
