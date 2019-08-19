@@ -83,12 +83,15 @@ void CongestionControlEnv::handleStates() {
 
 std::vector<NetworkState> CongestionControlEnv::stateSummary(
     const std::vector<NetworkState>& states) {
-  // Compute sum, mean, std, min, max for each field
   int dim = 0;
   bool keepdim = true;
+  // Bassel's correction on stddev only when defined to avoid NaNs.
+  bool unbiased = (states.size() > 1);
+
   NetworkState::toTensor(states, summaryTensor_);
   const auto& sum = torch::sum(summaryTensor_, dim, keepdim);
-  const auto& std_mean = torch::std_mean(summaryTensor_, dim, true, keepdim);
+  const auto& std_mean =
+      torch::std_mean(summaryTensor_, dim, unbiased, keepdim);
   const auto& min = torch::min_values(summaryTensor_, dim, keepdim);
   const auto& max = torch::max_values(summaryTensor_, dim, keepdim);
   const auto& summary = torch::cat(
@@ -147,7 +150,7 @@ float CongestionControlEnv::computeReward(
   float lostBytes = totalLost * normBytes();
 
   // TODO (viswanath): Differences in reward scale based on network condition.
-  float reward = cfg_.throughputFactor * std::log(throughputBytesPerMs) -
+  float reward = cfg_.throughputFactor * std::log(1 + throughputBytesPerMs) -
                  cfg_.delayFactor * std::log(1 + delayMs) -
                  cfg_.packetLossFactor * std::log(1 + lostBytes);
   VLOG(1) << "Num states = " << states.size()

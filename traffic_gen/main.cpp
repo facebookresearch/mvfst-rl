@@ -22,7 +22,7 @@ DEFINE_string(
     "CongestionControlRPCEnv RL server address for training. Could "
     "be either <host>:<port> or Unix domain socket path unix:<path>.");
 DEFINE_string(cc_env_agg, "time", "State aggregation type for RL cc_algo");
-DEFINE_int32(cc_env_time_window_ms, 500,
+DEFINE_int32(cc_env_time_window_ms, 100,
              "Window duration (ms) for TIME_WINDOW aggregation");
 DEFINE_int32(cc_env_fixed_window_size, 10,
              "Window size for FIXED_WINDOW aggregation");

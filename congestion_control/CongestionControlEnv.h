@@ -54,9 +54,11 @@ class CongestionControlEnv {
                        const QuicConnectionStateBase& conn);
   virtual ~CongestionControlEnv() = default;
 
-  // To be invoked by whoever owns CongestionControlEnv (such as
-  // RLCongestionController) to share network state updates after every
-  // Ack/Loss event.
+  /**
+   * To be invoked by whoever owns CongestionControlEnv (such as
+   * RLCongestionController) to share network state updates after every
+   * Ack/Loss event.
+   */
   void onNetworkState(NetworkState&& state);
 
   inline const Config& config() const { return cfg_; }
@@ -64,14 +66,18 @@ class CongestionControlEnv {
   inline float normBytes() const { return cfg_.normBytes; }
 
  protected:
-  // onObservation() will be triggered when there are enough state updates to
-  // run the policy and predict an action. Subclasses should implement this
-  // and return the action via onAction() callback, either synchronously or
-  // asynchronously.
+  /**
+   * onObservation() will be triggered when there are enough state updates to
+   * run the policy and predict an action. Subclasses should implement this
+   * and return the action via onAction() callback, either synchronously or
+   * asynchronously.
+   */
   virtual void onObservation(Observation&& obs, float reward) = 0;
 
-  // Callback to be invoked by subclasses when there is an update
-  // following onObservation().
+  /**
+   * Callback to be invoked by subclasses when there is an update
+   * following onObservation().
+   */
   void onAction(const Action& action);
 
   const Config& cfg_;
@@ -109,6 +115,9 @@ class CongestionControlEnv {
            (cfg_.aggregation == Config::Aggregation::TIME_WINDOW);
   }
 
+  /**
+   * Compute sum, mean, std, min, max for each field.
+   */
   std::vector<NetworkState> stateSummary(
       const std::vector<NetworkState>& states);
 
@@ -121,7 +130,7 @@ class CongestionControlEnv {
   std::vector<NetworkState> states_;
   std::deque<History> history_;
 
-  // Intermediate tensor for compute state summary
+  // Intermediate tensor to compute state summary
   torch::Tensor summaryTensor_{torch::empty({0}, torch::kFloat32)};
 };
 
