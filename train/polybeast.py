@@ -45,7 +45,7 @@ parser.add_argument("--savedir", default="~/palaas/torchbeast",
                     help="Root dir where experiment data will be saved.")
 parser.add_argument("--total_steps", default=100000, type=int, metavar="T",
                     help="Total environment steps to train for")
-parser.add_argument("--batch_size", default=8, type=int, metavar="B",
+parser.add_argument("--batch_size", default=1, type=int, metavar="B",
                     help="Learner batch size")
 parser.add_argument("--unroll_length", default=80, type=int, metavar="T",
                     help="The unroll length (time dimension)")
@@ -541,4 +541,8 @@ def main(flags):
 
 if __name__ == "__main__":
     flags = parser.parse_args()
+    # We disable batching in learner as unroll lengths could different across
+    # actors due to partial rollouts created by env resets.
+    assert flags.batch_size == 1, "Batching in learner not supported currently"
+
     main(flags)
