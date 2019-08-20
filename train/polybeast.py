@@ -37,6 +37,13 @@ parser.add_argument("--checkpoint", default="checkpoint.tar",
 parser.add_argument("--xpid", default=None,
                     help="Experiment id (default: None).")
 
+# Model settings.
+parser.add_argument("--observation_shape", nargs='+', type=int,
+                    default=(1, 1, 112),
+                    help="Shape of the observations to be fed into the model.")
+parser.add_argument("--num_actions", type=int, default=5,
+                    help="Number of actions output by the policy.")
+
 # Training settings.
 parser.add_argument("--address", default="unix:/tmp/rl_server_path", type=str,
                     help="Address to bind ActorPoolServer to. Could be either "
@@ -50,9 +57,9 @@ parser.add_argument("--batch_size", default=1, type=int, metavar="B",
 parser.add_argument("--unroll_length", default=80, type=int, metavar="T",
                     help="The unroll length (time dimension)")
 parser.add_argument("--num_learner_threads", default=2, type=int,
-                    metavar="N", help="Number learner threads.")
+                    metavar="N", help="Number of learner threads.")
 parser.add_argument("--num_inference_threads", default=2, type=int,
-                    metavar="N", help="Number learner threads.")
+                    metavar="N", help="Number of inference threads.")
 parser.add_argument("--disable_cuda", action="store_true",
                     help="Disable CUDA.")
 parser.add_argument("--use_lstm", action="store_true",
@@ -116,19 +123,18 @@ def compute_policy_gradient_loss(logits, actions, advantages):
     return torch.sum(policy_gradient_loss_per_timestep)
 
 
-# TODO (viswanath): cleanup, more models
 class Net(nn.Module):
 
     AgentOutput = collections.namedtuple("AgentOutput", "action policy_logits baseline")
 
-    def __init__(self, observation_size, num_actions, use_lstm=False):
+    def __init__(self, observation_shape, num_actions, use_lstm=False):
         super(Net, self).__init__()
-        self.observation_size = observation_size
+        self.observation_shape = observation_shape
         self.num_actions = num_actions
         self.use_lstm = use_lstm
 
         # Feature extraction.
-        input_size = functools.reduce(operator.mul, observation_size, 1)
+        input_size = functools.reduce(operator.mul, observation_shape, 1)
         self.fc1 = nn.Linear(input_size, 256)
         self.fc2 = nn.Linear(256, 256)
 
@@ -381,12 +387,18 @@ def train(flags):
         check_outputs=True,
     )
 
-    # TODO (viswanath): cleanup
-    dim = 5 * 20 + 2 * 6
-    model = Net(observation_size=(dim,), num_actions=5, use_lstm=flags.use_lstm)
+    model = Net(
+        observation_shape=flags.observation_shape,
+        num_actions=flags.num_actions,
+        use_lstm=flags.use_lstm,
+    )
     model = model.to(device=flags.learner_device)
 
-    actor_model = Net(observation_size=(dim,), num_actions=5, use_lstm=flags.use_lstm)
+    actor_model = Net(
+        observation_shape=flags.observation_shape,
+        num_actions=flags.num_actions,
+        use_lstm=flags.use_lstm,
+    )
     actor_model.to(device=flags.actor_device)
 
     # The ActorPool that will accept connections from actor clients.
@@ -519,24 +531,99 @@ def train(flags):
 
 
 def test(flags):
-    raise NotImplementedError()
+    if not flags.disable_cuda and torch.cuda.is_available():
+        logging.info("Using CUDA for testing.")
+        flags.actor_device = torch.device("cuda:0")
+    else:
+        logging.info("Not using CUDA for testing.")
+        flags.actor_device = torch.device("cpu")
+
+    model = Net(
+        observation_shape=flags.observation_shape,
+        num_actions=flags.num_actions,
+        use_lstm=flags.use_lstm,
+    )
+    model.eval()
+
+    logging.info("Initializing weights from {} for testing.".format(flags.checkpoint))
+    checkpoint = torch.load(flags.checkpoint, map_location=flags.actor_device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(flags.actor_device)
+
+    inference_batcher = actorpool.DynamicBatcher(
+        batch_dim=1,
+        minimum_batch_size=1,
+        maximum_batch_size=512,
+        timeout_ms=100,
+        check_outputs=True,
+    )
+    inference_threads = [
+        threading.Thread(
+            target=inference,
+            name="inference-thread-%i" % i,
+            args=(inference_batcher, model, flags),
+        )
+        for i in range(flags.num_inference_threads)
+    ]
+
+    # Initialize ActorPool in test mode (without learner queue) for
+    # RPC communication with the env and enqueueing steps in inference batcher.
+    actors = actorpool.ActorPool(
+        unroll_length=0,  # Unused in test mode
+        learner_queue=None,  # Indicates test mode
+        inference_batcher=inference_batcher,
+        server_address=flags.address,
+        initial_agent_state=model.initial_state(),
+    )
+
+    def run():
+        try:
+            actors.run()
+        except Exception as e:
+            logging.error("Exception in actorpool thread!")
+            traceback.print_exc()
+            print()
+            raise e
+
+    actorpool_thread = threading.Thread(target=run, name="actorpool-thread")
+
+    actorpool_thread.start()
+    for t in inference_threads:
+        t.start()
+
+    # Wait until interrupted
+    try:
+        while True:
+            time.sleep(10)
+    except KeyboardInterrupt:
+        pass  # Close properly.
+
+    logging.info("Testing finished.")
+    inference_batcher.close()
+    actors.stop()
+
+    actorpool_thread.join()
+    for t in inference_threads:
+        t.join()
 
 
 def main(flags):
-    if flags.mode == "train":
-
-        if flags.write_profiler_trace:
-            logging.info("Running with profiler.")
-            with torch.autograd.profiler.profile() as prof:
+    if flags.write_profiler_trace:
+        logging.info("Running with profiler.")
+        with torch.autograd.profiler.profile() as prof:
+            if flags.mode == "train":
                 train(flags)
-            filename = "chrome-%s.trace" % time.strftime("%Y%m%d-%H%M%S")
-            logging.info("Writing profiler trace to '%s.gz'", filename)
-            prof.export_chrome_trace(filename)
-            os.system("gzip %s" % filename)
-        else:
-            train(flags)
+            else:
+                test(flags)
+        filename = "chrome-%s.trace" % time.strftime("%Y%m%d-%H%M%S")
+        logging.info("Writing profiler trace to '%s.gz'", filename)
+        prof.export_chrome_trace(filename)
+        os.system("gzip %s" % filename)
     else:
-        test(flags)
+        if flags.mode == "train":
+            train(flags)
+        else:
+            test(flags)
 
 
 if __name__ == "__main__":

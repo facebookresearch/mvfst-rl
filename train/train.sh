@@ -58,6 +58,7 @@ echo "Pantheon started with $NUM_ENV parallel environments (pid: $PANTHEON_PID).
 # Start the trainer
 # TODO (viswanath): More params
 PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
+  --mode=train \
   --address "unix:$SOCKET_PATH"
 
 echo "Done training, killing pantheon."
