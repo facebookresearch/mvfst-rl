@@ -160,7 +160,7 @@ def get_pantheon_env(flags):
 def update_cmd(cmd, flags):
     extra_sender_args = " ".join(
         [
-            "--cc_env_mode=train",
+            "--cc_env_mode=remote",
             "--cc_env_rpc_address={}".format(flags.server_address),
             "--cc_env_time_window_ms=100",
             "-v={}".format(flags.v),

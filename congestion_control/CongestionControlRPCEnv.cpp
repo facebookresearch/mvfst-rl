@@ -29,12 +29,20 @@ CongestionControlRPCEnv::~CongestionControlRPCEnv() {
 }
 
 void CongestionControlRPCEnv::onObservation(Observation&& obs, float reward) {
-  {
-    std::lock_guard<std::mutex> g(mutex_);
-    obs.toTensor(tensor_);
-    reward_ = reward;
-    observationReady_ = true;
+  std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+  if (!lock) {
+    // If we can't acquire the mutex, then we haven't received the action
+    // back for the previous observation. Although this should almost never
+    // happen as model runtimes are sufficiently fast, we handle this safely
+    // here by skipping this observation.
+    LOG(WARNING) << __func__ << ": Still waiting for an update "
+                                "ActorPoolServer, skipping observation.";
+    return;
   }
+  obs.toTensor(tensor_);
+  reward_ = reward;
+  observationReady_ = true;
+  lock.unlock();
   cv_.notify_one();
 }
 
@@ -99,14 +107,8 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
     step_pb.set_done(done);
     step_pb.set_episode_step(episode_step);
     step_pb.set_episode_return(episode_return);
-
     episode_step++;
 
-    // In theory, it is possible that onObservation could sometimes be too fast
-    // and has another state update before stream->Read() gets back.
-    // For now, this would block in onObservation() as the mutex is locked
-    // until the next cv_.wait() call. In reality, this shouldn't be a problem
-    // as model runtimes are sufficiently fast.
     observationReady_ = false;  // Back to waiting
 
     stream->Write(step_pb);
