@@ -48,8 +48,8 @@ parser.add_argument(
 parser.add_argument(
     "--test_runs_per_job",
     type=int,
-    default=5,
-    help="Number of episodes to run per experiment in test mode.",
+    default=3,
+    help="Number of runs per job to average results over in test mode.",
 )
 parser.add_argument(
     "--logdir",

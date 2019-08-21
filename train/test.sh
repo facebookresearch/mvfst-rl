@@ -8,7 +8,7 @@
 CHECKPOINT=""
 MAX_JOBS=0
 JOB_IDS=""
-TEST_RUNS_PER_JOB=5
+TEST_RUNS_PER_JOB=3
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
