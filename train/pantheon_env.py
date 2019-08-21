@@ -123,6 +123,7 @@ def run_pantheon(flags, jobs, run_fn):
 
     for thread in threads:
         thread.join()
+    logging.info("Done with {}.".format(flags.mode))
 
 
 def get_pantheon_emulated_jobs(flags):
