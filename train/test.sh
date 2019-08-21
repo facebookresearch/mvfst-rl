@@ -1,15 +1,25 @@
 #!/bin/bash -e
 
-# Usage: ./train.sh [--num_env N]
+# Usage: ./test.sh --checkpoint <checkpoint.tar>
+#                  [--num_env N]
+#                  [--test_runs_per_env M]
 
 # ArgumentParser
+CHECKPOINT=""
 NUM_ENV=0
+TEST_RUNS_PER_ENV=5
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
+    --checkpoint )
+      CHECKPOINT="$2"
+      shift 2;;
     --num_env )
       NUM_ENV="$2"
+      shift 2;;
+    --test_runs_per_env )
+      TEST_RUNS_PER_ENV="$2"
       shift 2;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
@@ -18,13 +28,20 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
+if [ -z "$CHECKPOINT" ]; then
+  echo "--checkpoint must be specified"
+  exit 1
+fi
+
+echo "CHECKPOINT: $CHECKPOINT"
 echo "NUM_ENV: $NUM_ENV"
+echo "TEST_RUNS_PER_ENV: $TEST_RUNS_PER_ENV"
 
 CUR_DIR=$(dirname "$(realpath -s "$0")")
 ROOT_DIR="$CUR_DIR"/..
 TORCHBEAST_DIR="$ROOT_DIR"/third-party/torchbeast
 
-LOG_DIR="$CUR_DIR/logs/train"
+LOG_DIR="$CUR_DIR/logs/test"
 mkdir -p $LOG_DIR
 
 module unload cuda
@@ -47,35 +64,29 @@ rm -f $SOCKET_PATH
 PANTHEON_LOG_DIR="$LOG_DIR/pantheon"
 mkdir -p $PANTHEON_LOG_DIR
 PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
-TRAIN_LOG="$LOG_DIR/train.log"
+TEST_LOG="$LOG_DIR/train.log"
 
-CHECKPOINT="$LOG_DIR/checkpoint.tar"
-
-# Start pantheon_env.py in the background
-python3 $ROOT_DIR/train/pantheon_env.py \
-  --mode=train \
-  --num_env "$NUM_ENV" \
-  -v 1 \
-  --logdir "$PANTHEON_LOG_DIR" \
-  > "$PANTHEON_LOG" 2>&1 &
-BG_PID=$!
-echo "Pantheon running in background (pid: $BG_PID), logfile: $PANTHEON_LOG."
-
-# Start the trainer
+# For testing, pantheon_env.py decides termination, so launch polybeast.py first
+# in the background and kill it once pantheon_env.py returns.
 # TODO (viswanath): More params
-echo "Starting polybeast, logfile: $TRAIN_LOG, checkpoint: $CHECKPOINT."
 PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
-  --mode=train \
+  --mode=test \
   --address "unix:$SOCKET_PATH" \
   --checkpoint "$CHECKPOINT" \
-  > "$TRAIN_LOG" 2>&1
+  > "$TEST_LOG" 2>&1 &
+BG_PID=$!
+echo "Polybeast running in background (pid: $BG_PID), logfile: $TEST_LOG."
 
-# Kill the background pantheon process.
-echo "Done training, killing pantheon."
-kill -9 "$BG_PID"
-pkill -9 -f "pantheon"
+# Now start pantheon_env.py
+echo "Starting pantheon, logfile: $PANTHEON_LOG."
+python3 $ROOT_DIR/train/pantheon_env.py \
+  --mode=test \
+  --num_env "$NUM_ENV" \
+  --test_runs_per_env "$TEST_RUNS_PER_ENV" \
+  -v 1 \
+  --logdir "$PANTHEON_LOG_DIR" \
+  > "$PANTHEON_LOG" 2>&1
 
-echo "Testing..."
-"$ROOT_DIR"/train/test.sh --checkpoint "$CHECKPOINT"
-
-echo "All done! Model: $CHECKPOINT."
+# Interrupt the background polybeast process.
+echo "Done testing, terminating polybeast."
+kill -INT "$BG_PID"
