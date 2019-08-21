@@ -21,7 +21,7 @@ emu:
       - -f 1
   macros:
     common_param_set: >-
-      local --schemes mvfst_rl --data-dir {data_dir} --pkill-cleanup
+      local --data-dir {data_dir} --pkill-cleanup
   jobs:
     # 1, 'Calibrated emulator (Nepal to AWS India)'
     - scenario: 1

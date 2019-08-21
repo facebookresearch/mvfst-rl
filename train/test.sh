@@ -69,7 +69,7 @@ rm -f $SOCKET_PATH
 PANTHEON_LOG_DIR="$LOG_DIR/pantheon"
 mkdir -p $PANTHEON_LOG_DIR
 PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
-TEST_LOG="$LOG_DIR/train.log"
+TEST_LOG="$LOG_DIR/polybeast.log"
 
 # For testing, pantheon_env.py decides termination, so launch polybeast.py first
 # in the background and kill it once pantheon_env.py returns.

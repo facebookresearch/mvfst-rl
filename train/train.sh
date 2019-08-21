@@ -57,7 +57,7 @@ rm -f $SOCKET_PATH
 PANTHEON_LOG_DIR="$LOG_DIR/pantheon"
 mkdir -p $PANTHEON_LOG_DIR
 PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
-TRAIN_LOG="$LOG_DIR/train.log"
+TRAIN_LOG="$LOG_DIR/polybeast.log"
 
 CHECKPOINT="$LOG_DIR/checkpoint.tar"
 
