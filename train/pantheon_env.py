@@ -98,24 +98,28 @@ def test_run(flags, jobs, thread_id):
     """
     job_id = thread_id % len(jobs)
     cfg, cmd_tmpl = jobs[job_id]
-    logging.info("Test run: thread {} -> job {}".format(thread_id, job_id))
 
+    # Expand data_dir in cmd template
+    data_dir = path.join(flags.logdir, "test_expt{}".format(job_id))
+    cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
+    cmd = update_cmd(cmd, flags)
+
+    # Run tests
+    logging.info("Test run: thread {} -> job {}, cmd: {}".format(thread_id, job_id, " ".join(cmd)))
     pantheon_env = get_pantheon_env(flags)
-    episode = 0
-    while episode < flags.test_runs_per_job:
-        # Expand data_dir in cmd template
-        data_dir = path.join(flags.logdir, "test_expt{}_run{}".format(job_id, episode))
-        cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
-        cmd = update_cmd(cmd, flags)
+    p = subprocess.Popen(cmd, env=pantheon_env)
+    p.wait()
 
-        logging.info(
-            "Thread: {}, episode: {}, experiment: {}, cmd: {}".format(
-                thread_id, episode, job_id, " ".join(cmd)
-            )
-        )
-        p = subprocess.Popen(cmd, env=pantheon_env)
-        p.wait()
-        episode += 1
+    # Run analysis
+    analysis_cmd = [
+        utils.meta['analyze_path'],
+        '--data-dir={}'.format(data_dir),
+    ]
+    logging.info("Thread {}, job {}: Running analysis on {}, cmd: {}".format(thread_id, job_id, data_dir, " ".join(analysis_cmd)))
+    p = subprocess.Popen(analysis_cmd, env=pantheon_env)
+    p.wait()
+
+    logging.info("Test run finished for thread {}, job {}. Results in {}.".format(thread_id, job_id, data_dir))
 
 
 def run_pantheon(flags, jobs, num_threads, run_fn):
@@ -167,6 +171,7 @@ def get_pantheon_env(flags):
 
 
 def update_cmd(cmd, flags):
+    run_times = 1 if flags.mode == "train" else flags.test_runs_per_job
     extra_sender_args = " ".join(
         [
             "--cc_env_mode=remote",
@@ -175,8 +180,10 @@ def update_cmd(cmd, flags):
             "-v={}".format(flags.v),
         ]
     )
-    cmd = shlex.split(cmd) + ['--extra_sender_args="{}"'.format(extra_sender_args)]
-    return cmd
+    return shlex.split(cmd) + [
+        '--run-times={}'.format(run_times),
+        '--extra-sender-args="{}"'.format(extra_sender_args),
+    ]
 
 
 if __name__ == "__main__":
