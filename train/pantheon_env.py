@@ -19,18 +19,28 @@ logging.basicConfig(level=logging.INFO)
 parser = argparse.ArgumentParser(description="Pantheon Environment Instances")
 
 parser.add_argument(
+    "--mode", default="train", choices=["train", "test"], help="Training or test mode."
+)
+parser.add_argument(
     "-N",
     "--num_env",
     type=int,
-    default=4,
-    help="Number of Pantheon environment instances. "
-    "This corresponds to number of actors for RL training.",
+    default=0,
+    help="Number of Pantheon environment instances. For training,"
+    "this corresponds to number of actors for RL training. During testing,"
+    "this denotes the number of emulated experiments to run (0 for all available experiments)",
 )
 parser.add_argument(
     "--server_address",
     type=str,
     default="unix:/tmp/rl_server_path",
     help="RL server address - <host>:<port> or unix:<path>",
+)
+parser.add_argument(
+    "--test_runs_per_env",
+    type=int,
+    default=5,
+    help="Number of episodes to run per experiment in test mode.",
 )
 parser.add_argument(
     "--logdir",
@@ -42,44 +52,69 @@ parser.add_argument(
     "-v", type=int, default=0, help="Verbose log-level for Pantheon sender"
 )
 
-src_path = path.join(PANTHEON_ROOT, "src/experiments/test.py")
 
-
-def run_pantheon(flags):
-    # Each pantheon instance runs for a default of 30s (max 60s allowed).
-    # We treat each such run as a separate episode for training and run randomly
-    # chosen pantheon experiments in parallel.
-    logging.info("Starting {} Pantheon env instances at a time".format(flags.num_env))
-
-    def pantheon_runner(tid, jobs, env):
-        episode = 0
-        while True:
-            # Pick a random experiment to run
-            i = random.choice(range(len(jobs)))
-            cfg, cmd_tmpl = jobs[i]
-
-            # Expand data_dir in cmd template
-            data_dir = path.join(
-                flags.logdir, "tid{}_run{}_expt{}".format(tid, episode, i)
-            )
-            cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
-            cmd = update_cmd(cmd, flags)
-
-            logging.info(
-                "Thread: {}, episode: {}, experiment: {}, cmd: {}".format(
-                    tid, episode, i, " ".join(cmd)
-                )
-            )
-            p = subprocess.Popen(cmd, env=env)
-            p.wait()
-            episode += 1
-
-    jobs = get_pantheon_emulated_jobs(flags)
+def train_run(flags, jobs, thread_id):
+    """
+    Each pantheon job runs for a default of 30s (max 60s allowed).
+    We treat each such run as a separate episode for training and run
+    randomly chosen job in parallel.
+    """
     pantheon_env = get_pantheon_env(flags)
+    episode = 0
+    while True:
+        # Pick a random experiment to run
+        job_id = random.choice(range(len(jobs)))
+        cfg, cmd_tmpl = jobs[job_id]
+
+        # Expand data_dir in cmd template
+        data_dir = path.join(
+            flags.logdir, "train_tid{}_run{}_expt{}".format(thread_id, episode, job_id)
+        )
+        cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
+        cmd = update_cmd(cmd, flags)
+
+        logging.info(
+            "Thread: {}, episode: {}, experiment: {}, cmd: {}".format(
+                thread_id, episode, job_id, " ".join(cmd)
+            )
+        )
+        p = subprocess.Popen(cmd, env=pantheon_env)
+        p.wait()
+        episode += 1
+
+
+def test_run(flags, jobs, thread_id):
+    """
+    Thread i runs jobs[i % len(jobs)] flags.test_runs_per_env times.
+    """
+    job_id = thread_id % len(jobs)
+    cfg, cmd_tmpl = jobs[job_id]
+    logging.info("Test run: thread {} -> job {}".format(thread_id, job_id))
+
+    pantheon_env = get_pantheon_env(flags)
+    episode = 0
+    while episode < flags.test_runs_per_env:
+        # Expand data_dir in cmd template
+        data_dir = path.join(flags.logdir, "test_expt{}_run{}".format(job_id, episode))
+        cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
+        cmd = update_cmd(cmd, flags)
+
+        logging.info(
+            "Thread: {}, episode: {}, experiment: {}, cmd: {}".format(
+                thread_id, episode, job_id, " ".join(cmd)
+            )
+        )
+        p = subprocess.Popen(cmd, env=pantheon_env)
+        p.wait()
+        episode += 1
+
+
+def run_pantheon(flags, jobs, run_fn):
+    logging.info("Starting {} Pantheon jobs at a time".format(flags.num_env))
 
     threads = []
     for i in range(flags.num_env):
-        thread = threading.Thread(target=pantheon_runner, args=(i, jobs, pantheon_env))
+        thread = threading.Thread(target=run_fn, args=(flags, jobs, i))
         thread.start()
         threads.append(thread)
         # Stagger the beginning of each thread to avoid some errors due to
@@ -136,4 +171,13 @@ def update_cmd(cmd, flags):
 
 if __name__ == "__main__":
     flags = parser.parse_args()
-    run_pantheon(flags)
+    jobs = get_pantheon_emulated_jobs(flags)
+
+    if flags.num_env <= 0:
+        flags.num_env = len(jobs)
+    if flags.mode == "test":
+        flags.num_env = min(flags.num_env, len(jobs))
+    logging.info("num_env set to {}".format(flags.num_env))
+
+    run_fn = train_run if flags.mode == "train" else test_run
+    run_pantheon(flags, jobs, run_fn)

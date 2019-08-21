@@ -3,7 +3,7 @@
 # Usage: ./train.sh [--num_env N]
 
 # ArgumentParser
-NUM_ENV=4
+NUM_ENV=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -48,12 +48,13 @@ PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
 
 # Start pantheon_env.py in the background
 python3 $ROOT_DIR/train/pantheon_env.py \
+  --mode=train \
   --num_env "$NUM_ENV" \
   -v 1 \
   --logdir "$PANTHEON_LOG_DIR" \
   > "$PANTHEON_LOG" 2>&1 &
 PANTHEON_PID=$!
-echo "Pantheon started with $NUM_ENV parallel environments (pid: $PANTHEON_PID). Logfile: $PANTHEON_LOG."
+echo "Started Pantheon (pid: $PANTHEON_PID). Logfile: $PANTHEON_LOG."
 
 # Start the trainer
 # TODO (viswanath): More params
