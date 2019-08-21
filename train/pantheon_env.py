@@ -171,7 +171,19 @@ def get_pantheon_env(flags):
 
 
 def update_cmd(cmd, flags):
-    run_times = 1 if flags.mode == "train" else flags.test_runs_per_job
+    if flags.mode == "train":
+        schemes = 'mvfst_rl'
+        run_times = 1
+    else:
+        schemes = ' '.join([
+            # TODO (viswanath): More schemes
+            'mvfst_rl',
+            'mvfst_cubic',
+            'mvfst_newreno',
+            'mvfst_copa',
+            'mvfst_bbr',
+        ])
+        run_times = flags.test_runs_per_job
     extra_sender_args = " ".join(
         [
             "--cc_env_mode=remote",
@@ -181,6 +193,7 @@ def update_cmd(cmd, flags):
         ]
     )
     return shlex.split(cmd) + [
+        '--schemes={}'.format(schemes),
         '--run-times={}'.format(run_times),
         '--extra-sender-args="{}"'.format(extra_sender_args),
     ]
