@@ -73,6 +73,7 @@ PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
   --mode=test \
   --address "unix:$SOCKET_PATH" \
   --checkpoint "$CHECKPOINT" \
+  --disable_cuda \
   > "$TEST_LOG" 2>&1 &
 BG_PID=$!
 echo "Polybeast running in background (pid: $BG_PID), logfile: $TEST_LOG."
