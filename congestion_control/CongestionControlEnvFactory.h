@@ -14,11 +14,11 @@ class CongestionControlEnvFactory {
       CongestionControlEnv::Callback* cob,
       const QuicConnectionStateBase& conn) {
     switch (cfg_.mode) {
-      case CongestionControlEnv::Config::Mode::TRAIN:
-        return std::make_unique<CongestionControlRPCEnv>(cfg_, cob, conn);
-      case CongestionControlEnv::Config::Mode::TEST:
-        LOG(FATAL) << "Test mode not yet implemented";
+      case CongestionControlEnv::Config::Mode::LOCAL:
+        LOG(FATAL) << "Local mode not yet implemented";
         return nullptr;
+      case CongestionControlEnv::Config::Mode::REMOTE:
+        return std::make_unique<CongestionControlRPCEnv>(cfg_, cob, conn);
       case CongestionControlEnv::Config::Mode::RANDOM:
         return std::make_unique<CongestionControlRandomEnv>(cfg_, cob, conn);
       default:

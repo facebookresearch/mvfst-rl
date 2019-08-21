@@ -10,9 +10,9 @@ struct CongestionControlEnvConfig {
   /// Definitions
 
   enum class Mode : uint8_t {
-    TRAIN = 0,
-    TEST,
-    RANDOM,  // Env that takes random actions
+    LOCAL = 0,  // RL policy run locally
+    REMOTE,     // RL policy on a remote RL server
+    RANDOM,     // Simple env that takes random actions (for testing)
   };
 
   // Type of aggregation to group state updates
@@ -31,7 +31,7 @@ struct CongestionControlEnvConfig {
 
   /// Members
 
-  Mode mode{Mode::TRAIN};
+  Mode mode{Mode::LOCAL};
 
   // RL server address ("<host>:<port>" or "unix:<path>") for RPC Env.
   std::string rpcAddress{"unix:/tmp/rl_server_path"};
