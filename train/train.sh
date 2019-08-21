@@ -1,15 +1,23 @@
 #!/bin/bash -e
 
-# Usage: ./train.sh [--num_env N]
+# Usage: ./train.sh [--num_actors N] [--max_jobs M] [--job_ids 0,1,2]
 
 # ArgumentParser
-NUM_ENV=0
+NUM_ACTORS=0
+MAX_JOBS=0
+JOB_IDS=""
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
-    --num_env )
-      NUM_ENV="$2"
+    --num_actors )
+      NUM_ACTORS="$2"
+      shift 2;;
+    --max_jobs )
+      MAX_JOBS="$2"
+      shift 2;;
+    --job_ids )
+      JOB_IDS="$2"
       shift 2;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
@@ -18,7 +26,9 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
-echo "NUM_ENV: $NUM_ENV"
+echo "NUM_ACTORS: $NUM_ACTORS"
+echo "MAX_JOBS: $MAX_JOBS"
+echo "JOB_IDS: $JOB_IDS"
 
 CUR_DIR=$(dirname "$(realpath -s "$0")")
 ROOT_DIR="$CUR_DIR"/..
@@ -54,7 +64,9 @@ CHECKPOINT="$LOG_DIR/checkpoint.tar"
 # Start pantheon_env.py in the background
 python3 $ROOT_DIR/train/pantheon_env.py \
   --mode=train \
-  --num_env "$NUM_ENV" \
+  --num_actors "$NUM_ACTORS" \
+  --max_jobs "$MAX_JOBS" \
+  --job_ids "$JOB_IDS" \
   -v 1 \
   --logdir "$PANTHEON_LOG_DIR" \
   > "$PANTHEON_LOG" 2>&1 &

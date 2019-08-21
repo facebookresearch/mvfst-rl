@@ -22,13 +22,22 @@ parser.add_argument(
     "--mode", default="train", choices=["train", "test"], help="Training or test mode."
 )
 parser.add_argument(
-    "-N",
-    "--num_env",
+    "--num_actors",
     type=int,
     default=0,
-    help="Number of Pantheon environment instances. For training,"
-    "this corresponds to number of actors for RL training. During testing,"
-    "this denotes the number of emulated experiments to run (0 for all available experiments)",
+    help="Number of parallel actors for training. Default 0 starts one actor process per pantheon job.",
+)
+parser.add_argument(
+    "--max_jobs",
+    type=int,
+    default=0,
+    help="Maximum number of different Pantheon emulated experiments to use (0 for all)",
+)
+parser.add_argument(
+    "--job_ids",
+    type=str,
+    default="",
+    help="Comma separate list of job ids. If set, filter and run only the specified pantheon jobs.",
 )
 parser.add_argument(
     "--server_address",
@@ -37,7 +46,7 @@ parser.add_argument(
     help="RL server address - <host>:<port> or unix:<path>",
 )
 parser.add_argument(
-    "--test_runs_per_env",
+    "--test_runs_per_job",
     type=int,
     default=5,
     help="Number of episodes to run per experiment in test mode.",
@@ -85,7 +94,7 @@ def train_run(flags, jobs, thread_id):
 
 def test_run(flags, jobs, thread_id):
     """
-    Thread i runs jobs[i % len(jobs)] flags.test_runs_per_env times.
+    Thread i runs jobs[i % len(jobs)] flags.test_runs_per_job times.
     """
     job_id = thread_id % len(jobs)
     cfg, cmd_tmpl = jobs[job_id]
@@ -93,7 +102,7 @@ def test_run(flags, jobs, thread_id):
 
     pantheon_env = get_pantheon_env(flags)
     episode = 0
-    while episode < flags.test_runs_per_env:
+    while episode < flags.test_runs_per_job:
         # Expand data_dir in cmd template
         data_dir = path.join(flags.logdir, "test_expt{}_run{}".format(job_id, episode))
         cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
@@ -109,11 +118,11 @@ def test_run(flags, jobs, thread_id):
         episode += 1
 
 
-def run_pantheon(flags, jobs, run_fn):
-    logging.info("Starting {} Pantheon jobs at a time".format(flags.num_env))
+def run_pantheon(flags, jobs, num_threads, run_fn):
+    logging.info("Launching {} jobs over {} threads for {}.".format(len(jobs), num_threads, flags.mode))
 
     threads = []
-    for i in range(flags.num_env):
+    for i in range(num_threads):
         thread = threading.Thread(target=run_fn, args=(flags, jobs, i))
         thread.start()
         threads.append(thread)
@@ -172,13 +181,26 @@ def update_cmd(cmd, flags):
 
 if __name__ == "__main__":
     flags = parser.parse_args()
-    jobs = get_pantheon_emulated_jobs(flags)
+    all_jobs = get_pantheon_emulated_jobs(flags)
 
-    if flags.num_env <= 0:
-        flags.num_env = len(jobs)
-    if flags.mode == "test":
-        flags.num_env = min(flags.num_env, len(jobs))
-    logging.info("num_env set to {}".format(flags.num_env))
+    if flags.job_ids:
+        job_ids = [int(job_id) for job_id in flags.job_ids.split(",")]
+        jobs = [all_jobs[job_id] for job_id in job_ids]
+        logging.info("Filtered {} jobs corresponding to ids {}.".format(len(jobs), flags.job_ids))
+    else:
+        jobs = all_jobs
+        logging.info("Using all {} jobs.".format(len(jobs)))
+
+    if flags.max_jobs > 0:
+        logging.info("Filtering a maximum of {} jobs.".format(flags.max_jobs))
+        jobs = jobs[:flags.max_jobs]
+
+    if flags.mode == "train":
+        # One thread / pantheon env per actor while training
+        num_threads = flags.num_actors if flags.num_actors > 0 else len(jobs)
+    else:
+        # One thread per job to test
+        num_threads = len(jobs)
 
     run_fn = train_run if flags.mode == "train" else test_run
-    run_pantheon(flags, jobs, run_fn)
+    run_pantheon(flags, jobs, num_threads, run_fn)

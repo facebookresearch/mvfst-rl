@@ -1,13 +1,14 @@
 #!/bin/bash -e
 
 # Usage: ./test.sh --checkpoint <checkpoint.tar>
-#                  [--num_env N]
-#                  [--test_runs_per_env M]
+#                  [--max_jobs M] [--job_ids 0,1,2]
+#                  [--test_runs_per_job N]
 
 # ArgumentParser
 CHECKPOINT=""
-NUM_ENV=0
-TEST_RUNS_PER_ENV=5
+MAX_JOBS=0
+JOB_IDS=""
+TEST_RUNS_PER_JOB=5
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -15,11 +16,14 @@ while [[ $# -gt 0 ]]; do
     --checkpoint )
       CHECKPOINT="$2"
       shift 2;;
-    --num_env )
-      NUM_ENV="$2"
+    --max_jobs )
+      MAX_JOBS="$2"
       shift 2;;
-    --test_runs_per_env )
-      TEST_RUNS_PER_ENV="$2"
+    --job_ids )
+      JOB_IDS="$2"
+      shift 2;;
+    --test_runs_per_job )
+      TEST_RUNS_PER_JOB="$2"
       shift 2;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
@@ -34,8 +38,9 @@ if [ -z "$CHECKPOINT" ]; then
 fi
 
 echo "CHECKPOINT: $CHECKPOINT"
-echo "NUM_ENV: $NUM_ENV"
-echo "TEST_RUNS_PER_ENV: $TEST_RUNS_PER_ENV"
+echo "MAX_JOBS: $MAX_JOBS"
+echo "JOB_IDS: $JOB_IDS"
+echo "TEST_RUNS_PER_JOB: $TEST_RUNS_PER_JOB"
 
 CUR_DIR=$(dirname "$(realpath -s "$0")")
 ROOT_DIR="$CUR_DIR"/..
@@ -82,8 +87,9 @@ echo "Polybeast running in background (pid: $BG_PID), logfile: $TEST_LOG."
 echo "Starting pantheon, logfile: $PANTHEON_LOG."
 python3 $ROOT_DIR/train/pantheon_env.py \
   --mode=test \
-  --num_env "$NUM_ENV" \
-  --test_runs_per_env "$TEST_RUNS_PER_ENV" \
+  --max_jobs "$MAX_JOBS" \
+  --job_ids "$JOB_IDS" \
+  --test_runs_per_job "$TEST_RUNS_PER_JOB" \
   -v 1 \
   --logdir "$PANTHEON_LOG_DIR" \
   > "$PANTHEON_LOG" 2>&1
