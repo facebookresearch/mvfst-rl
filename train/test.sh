@@ -66,10 +66,10 @@ PYTHONPATH=$PYTHONPATH:"$TORCHBEAST_DIR"
 SOCKET_PATH="/tmp/rl_server_path"
 rm -f $SOCKET_PATH
 
+POLYBEAST_LOG="$LOG_DIR/polybeast.log"
+PANTHEON_LOG="$LOG_DIR/pantheon.log"
 PANTHEON_LOG_DIR="$LOG_DIR/pantheon"
 mkdir -p $PANTHEON_LOG_DIR
-PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
-TEST_LOG="$LOG_DIR/polybeast.log"
 
 # For testing, pantheon_env.py decides termination, so launch polybeast.py first
 # in the background and kill it once pantheon_env.py returns.
@@ -79,9 +79,9 @@ PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
   --address "unix:$SOCKET_PATH" \
   --checkpoint "$CHECKPOINT" \
   --disable_cuda \
-  > "$TEST_LOG" 2>&1 &
+  > "$POLYBEAST_LOG" 2>&1 &
 BG_PID=$!
-echo "Polybeast running in background (pid: $BG_PID), logfile: $TEST_LOG."
+echo "Polybeast running in background (pid: $BG_PID), logfile: $POLYBEAST_LOG."
 
 # Now start pantheon_env.py
 echo "Starting pantheon, logfile: $PANTHEON_LOG."

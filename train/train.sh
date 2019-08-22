@@ -54,10 +54,10 @@ PYTHONPATH=$PYTHONPATH:"$TORCHBEAST_DIR"
 SOCKET_PATH="/tmp/rl_server_path"
 rm -f $SOCKET_PATH
 
+POLYBEAST_LOG="$LOG_DIR/polybeast.log"
+PANTHEON_LOG="$LOG_DIR/pantheon.log"
 PANTHEON_LOG_DIR="$LOG_DIR/pantheon"
 mkdir -p $PANTHEON_LOG_DIR
-PANTHEON_LOG="$PANTHEON_LOG_DIR/pantheon.log"
-TRAIN_LOG="$LOG_DIR/polybeast.log"
 
 CHECKPOINT="$LOG_DIR/checkpoint.tar"
 
@@ -75,12 +75,12 @@ echo "Pantheon running in background (pid: $BG_PID), logfile: $PANTHEON_LOG."
 
 # Start the trainer
 # TODO (viswanath): More params
-echo "Starting polybeast, logfile: $TRAIN_LOG, checkpoint: $CHECKPOINT."
+echo "Starting polybeast, logfile: $POLYBEAST_LOG, checkpoint: $CHECKPOINT."
 PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
   --mode=train \
   --address "unix:$SOCKET_PATH" \
   --checkpoint "$CHECKPOINT" \
-  > "$TRAIN_LOG" 2>&1
+  > "$POLYBEAST_LOG" 2>&1
 
 # Kill the background pantheon process.
 echo "Done training, killing pantheon."
@@ -88,6 +88,9 @@ kill -9 "$BG_PID"
 pkill -9 -f "pantheon"
 
 echo "Testing..."
-"$ROOT_DIR"/train/test.sh --checkpoint "$CHECKPOINT"
+"$ROOT_DIR"/train/test.sh \
+  --checkpoint "$CHECKPOINT" \
+  --max_jobs "$MAX_JOBS" \
+  --job_ids "$JOB_IDS"
 
 echo "All done! Model: $CHECKPOINT."
