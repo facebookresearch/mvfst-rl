@@ -88,6 +88,9 @@ kill -9 "$BG_PID"
 pkill -9 -f "pantheon"
 
 echo "Testing..."
-"$ROOT_DIR"/train/test.sh --checkpoint "$CHECKPOINT"
+"$ROOT_DIR"/train/test.sh \
+  --checkpoint "$CHECKPOINT" \
+  --max_jobs "$MAX_JOBS" \
+  --job_ids "$JOB_IDS"
 
 echo "All done! Model: $CHECKPOINT."
