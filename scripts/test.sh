@@ -2,13 +2,18 @@
 
 # Usage: ./test.sh --checkpoint <checkpoint.tar>
 #                  [--max_jobs M] [--job_ids 0,1,2]
+#                  [--logdir /log/dir]
 #                  [--test_runs_per_job N]
+
+CUR_DIR=$(dirname "$(realpath -s "$0")")
+ROOT_DIR="$CUR_DIR"/..
 
 # ArgumentParser
 CHECKPOINT=""
 MAX_JOBS=0
 JOB_IDS=""
 TEST_RUNS_PER_JOB=3
+BASE_LOG_DIR="$CUR_DIR/logs"
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -21,6 +26,9 @@ while [[ $# -gt 0 ]]; do
       shift 2;;
     --job_ids )
       JOB_IDS="$2"
+      shift 2;;
+    --logdir )
+      BASE_LOG_DIR="$2"
       shift 2;;
     --test_runs_per_job )
       TEST_RUNS_PER_JOB="$2"
@@ -40,26 +48,13 @@ fi
 echo "CHECKPOINT: $CHECKPOINT"
 echo "MAX_JOBS: $MAX_JOBS"
 echo "JOB_IDS: $JOB_IDS"
+echo "BASE_LOG_DIR: $BASE_LOG_DIR"
 echo "TEST_RUNS_PER_JOB: $TEST_RUNS_PER_JOB"
 
-CUR_DIR=$(dirname "$(realpath -s "$0")")
-ROOT_DIR="$CUR_DIR"/..
-TORCHBEAST_DIR="$ROOT_DIR"/third-party/torchbeast
-
-LOG_DIR="$CUR_DIR/logs/test"
+LOG_DIR="$BASE_LOG_DIR/test"
 mkdir -p $LOG_DIR
 
-module unload cuda
-module unload cudnn
-module unload NCCL
-module load cuda/9.2
-module load cudnn/v7.3-cuda.9.2
-module load NCCL/2.2.13-1-cuda.9.2
-
-export CUDA_HOME="/public/apps/cuda/9.2"
-export CUDNN_INCLUDE_DIR="/public/apps/cudnn/v7.3/cuda/include"
-export CUDNN_LIB_DIR="/public/apps/cudnn/v7.3/cuda/lib64"
-
+TORCHBEAST_DIR="$ROOT_DIR"/third-party/torchbeast
 PYTHONPATH=$PYTHONPATH:"$TORCHBEAST_DIR"
 
 # Unix domain socket path for RL server address
