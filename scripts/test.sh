@@ -40,16 +40,16 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
-if [ -z "$CHECKPOINT" ]; then
-  echo "--checkpoint must be specified"
-  exit 1
-fi
-
 echo "CHECKPOINT: $CHECKPOINT"
 echo "MAX_JOBS: $MAX_JOBS"
 echo "JOB_IDS: $JOB_IDS"
 echo "BASE_LOG_DIR: $BASE_LOG_DIR"
 echo "TEST_RUNS_PER_JOB: $TEST_RUNS_PER_JOB"
+
+if [ -z "$CHECKPOINT" ]; then
+  echo "--checkpoint must be specified"
+  exit 1
+fi
 
 LOG_DIR="$BASE_LOG_DIR/test"
 mkdir -p $LOG_DIR
