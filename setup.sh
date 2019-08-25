@@ -62,6 +62,12 @@ function setup_pantheon() {
                           pkg-config iproute2
   sudo python2 -m pip install matplotlib numpy tabulate pyyaml
 
+  # Copy mahimahi binaries to conda env (to be able to run in cluster)
+  # with setuid bit.
+  cp /usr/bin/mm-*  "$CONDA_PREFIX"/bin/
+  sudo chown root:root "$CONDA_PREFIX"/bin/mm-*
+  sudo chmod 4755 "$CONDA_PREFIX"/bin/mm-*
+
   # Install pantheon tunnel in the conda env.
   cd third_party/pantheon-tunnel && ./autogen.sh \
   && ./configure --prefix="$CONDA_PREFIX" \

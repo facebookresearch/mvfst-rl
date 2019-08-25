@@ -11,4 +11,5 @@ __pycache__/
 
 # Logs and stuff
 train/logs/
+scripts/logs/
 *checkpoint.tar*

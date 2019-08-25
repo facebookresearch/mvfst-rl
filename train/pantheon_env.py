@@ -10,6 +10,7 @@ import shlex
 import threading
 import time
 import utils
+from shutil import copyfile
 
 from constants import SRC_DIR, PANTHEON_ROOT
 
@@ -119,6 +120,10 @@ def test_run(flags, jobs, thread_id):
     p = subprocess.Popen(analysis_cmd, env=pantheon_env)
     p.wait()
 
+    copyfile(
+        path.join(data_dir, 'pantheon_summary_mean.pdf'),
+        path.join(flags.logdir, 'test_expt{}.pdf'.format(job_id))
+    )
     logging.info("Test run finished for thread {}, job {}. Results in {}.".format(thread_id, job_id, data_dir))
 
 

@@ -1,11 +1,16 @@
 #!/bin/bash -e
 
 # Usage: ./train.sh [--num_actors N] [--max_jobs M] [--job_ids 0,1,2]
+#                   [--logdir /log/dir]
+
+CUR_DIR=$(dirname "$(realpath -s "$0")")
+ROOT_DIR="$CUR_DIR"/..
 
 # ArgumentParser
 NUM_ACTORS=0
 MAX_JOBS=0
 JOB_IDS=""
+BASE_LOG_DIR="$CUR_DIR/logs"
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -19,6 +24,9 @@ while [[ $# -gt 0 ]]; do
     --job_ids )
       JOB_IDS="$2"
       shift 2;;
+    --logdir )
+      BASE_LOG_DIR="$2"
+      shift 2;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
       shift;;
@@ -29,25 +37,12 @@ set -- "${POSITIONAL[@]}" # Restore positional parameters
 echo "NUM_ACTORS: $NUM_ACTORS"
 echo "MAX_JOBS: $MAX_JOBS"
 echo "JOB_IDS: $JOB_IDS"
+echo "BASE_LOG_DIR: $BASE_LOG_DIR"
 
-CUR_DIR=$(dirname "$(realpath -s "$0")")
-ROOT_DIR="$CUR_DIR"/..
-TORCHBEAST_DIR="$ROOT_DIR"/third-party/torchbeast
-
-LOG_DIR="$CUR_DIR/logs/train"
+LOG_DIR="$BASE_LOG_DIR/train"
 mkdir -p $LOG_DIR
 
-module unload cuda
-module unload cudnn
-module unload NCCL
-module load cuda/9.2
-module load cudnn/v7.3-cuda.9.2
-module load NCCL/2.2.13-1-cuda.9.2
-
-export CUDA_HOME="/public/apps/cuda/9.2"
-export CUDNN_INCLUDE_DIR="/public/apps/cudnn/v7.3/cuda/include"
-export CUDNN_LIB_DIR="/public/apps/cudnn/v7.3/cuda/lib64"
-
+TORCHBEAST_DIR="$ROOT_DIR"/third-party/torchbeast
 PYTHONPATH=$PYTHONPATH:"$TORCHBEAST_DIR"
 
 # Unix domain socket path for RL server address
@@ -75,7 +70,8 @@ echo "Pantheon running in background (pid: $BG_PID), logfile: $PANTHEON_LOG."
 
 # Start the trainer
 # TODO (viswanath): More params
-echo "Starting polybeast, logfile: $POLYBEAST_LOG, checkpoint: $CHECKPOINT."
+echo "Starting polybeast, logfile: $POLYBEAST_LOG."
+echo "Checkpoint: $CHECKPOINT."
 PYTHONPATH=$PYTHONPATH OMP_NUM_THREADS=1 python3 $ROOT_DIR/train/polybeast.py \
   --mode=train \
   --address "unix:$SOCKET_PATH" \
@@ -88,9 +84,10 @@ kill -9 "$BG_PID"
 pkill -9 -f "pantheon"
 
 echo "Testing..."
-"$ROOT_DIR"/train/test.sh \
+"$ROOT_DIR"/scripts/test.sh \
   --checkpoint "$CHECKPOINT" \
   --max_jobs "$MAX_JOBS" \
-  --job_ids "$JOB_IDS"
+  --job_ids "$JOB_IDS" \
+  --logdir "$BASE_LOG_DIR"
 
 echo "All done! Model: $CHECKPOINT."
