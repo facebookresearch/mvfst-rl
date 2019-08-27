@@ -3,7 +3,7 @@ import string
 import itertools
 from datetime import datetime
 
-from constants import SRC_DIR, PANTHEON_ROOT, EXPERIMENTS_CFG
+from train.constants import SRC_DIR, PANTHEON_ROOT, EXPERIMENTS_CFG
 
 
 class SafeDict(dict):
