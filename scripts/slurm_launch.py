@@ -19,13 +19,13 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 
 # TODO (viswanath): Things to sweep over: history/obs shape, num actions, lstm,
-# total steps, unrol, lr, reward clip, time window ms, norm,
+# total steps, unroll, lr, reward clip, time window ms, norm,
 # reward params (delay mult)
 SWEEP_GRID = dict(
     num_actors=40,
     unroll_length=80,
     total_steps=20000000,
-    learning_rate=[0.0001, 0.00001],
+    learning_rate=[0.0005, 0.0001, 0.00001],
     use_lstm=[False, True],
     epsilon=0.01,
     entropy_cost=0.01,
@@ -90,7 +90,6 @@ def main(flags):
             partition="dev",
             time=600,
             nodes=1,
-            ntasks_per_node=1,
             job_name="mvrlfst",
             num_gpus=2,
             cpus_per_task=40,
