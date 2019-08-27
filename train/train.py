@@ -37,7 +37,9 @@ def run(flags, train=True):
     flags.mode = "train" if train else "test"
 
     flags.logdir = os.path.join(flags.base_logdir, flags.mode)
+    flags.savedir = os.path.join(flags.logdir, "torchbeast")
     os.makedirs(flags.logdir, exist_ok=True)
+    os.makedirs(flags.savedir, exist_ok=True)
 
     flags.checkpoint = os.path.join(flags.base_logdir, "checkpoint.tar")
 

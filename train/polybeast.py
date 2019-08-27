@@ -98,7 +98,7 @@ def add_args(parser):
     )
     parser.add_argument("--disable_cuda", action="store_true", help="Disable CUDA.")
     parser.add_argument(
-        "--use_lstm", action="store_true", help="Use LSTM in agent model."
+        "--use_lstm", type=bool, default=False, help="Use LSTM in agent model."
     )
 
     # Loss settings.
