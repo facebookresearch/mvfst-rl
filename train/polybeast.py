@@ -39,11 +39,10 @@ def add_args(parser):
 
     # Model settings.
     parser.add_argument(
-        "--observation_shape",
-        nargs="+",
+        "--observation_length",
         type=int,
-        default=(1, 1, 112),
-        help="Shape of the observations to be fed into the model.",
+        default=112,
+        help="Length of the observation vector to be fed into the model.",
     )
     parser.add_argument(
         "--num_actions",
@@ -658,6 +657,8 @@ def main(flags):
     # We disable batching in learner as unroll lengths could different across
     # actors due to partial rollouts created by env resets.
     assert flags.batch_size == 1, "Batching in learner not supported currently"
+
+    flags.observation_shape = (1, 1, flags.observation_length)
 
     if flags.write_profiler_trace:
         logging.info("Running with profiler.")

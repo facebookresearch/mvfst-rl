@@ -18,17 +18,23 @@ logging.basicConfig(level=logging.INFO)
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
-# TODO (viswanath): Things to sweep over: history/obs shape, num actions, lstm,
-# total steps, unroll, lr, reward clip, time window ms, norm,
-# reward params (delay mult)
 SWEEP_GRID = dict(
     num_actors=40,
     unroll_length=80,
     total_steps=20000000,
-    learning_rate=[0.0005, 0.0001, 0.00001],
-    use_lstm=[False, True],
+    learning_rate=0.0005,
+    use_lstm=True,
     epsilon=0.01,
     entropy_cost=0.01,
+    num_actions=[5, 9],
+    cc_env_history_size=[0, 10, 20],
+    cc_env_norm_ms=100.0,
+    cc_env_norm_bytes=1000.0,
+    cc_env_time_window_ms=100,
+    cc_env_reward_throughput_factor=1.0,
+    cc_env_reward_delay_factor=[0.0, 0.5, 1.0],
+    cc_env_reward_packet_loss_factor=0.0,
+    cc_env_reward_max_delay=True,
 )
 
 
@@ -66,30 +72,54 @@ def make_command(params):
     return list(params)
 
 
+def get_observation_length(history_size):
+    return 100 + 6 * history_size
+
+
+def get_actions(num_actions):
+    ACTIONS = {
+        5: "0,/2,-10,+10,*2",
+        7: "0,/2,/1.5,-10,+10,*1.5,*2",
+        9: "0,/2,/1.5,/1.25,-10,+10,*1.25,*1.5,*2",
+        11: "0,/2,/1.5,/1.25,-10,-1,+1,+10,*1.25,*1.5,*2",
+    }
+    assert num_actions in ACTIONS, "Unsupported num_actions"
+    return ACTIONS[num_actions]
+
+
 def main(flags):
     now = datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f")
 
     sweep_grid = expand_args(SWEEP_GRID)
-    logging.info("Sweeping over {} settings".format(len(SWEEP_GRID)))
+    logging.info("Sweeping over {} settings".format(len(sweep_grid)))
 
-    for i, train_args in enumerate(SWEEP_GRID):
+    for i, train_args in enumerate(sweep_grid):
         uid = "{}-{}".format(now, train_args["xpid"])
         logdir = "/checkpoint/{}/mvrlfst/{}".format(os.environ["USER"], uid)
         os.makedirs(logdir, exist_ok=True)
 
-        train_parser = train.get_parser()
-        train_flags = train_parser.parse_args(
-            make_command(train_args) + ["--base_logdir={}".format(logdir)]
+        train_args.update(
+            {
+                "base_logdir": logdir,
+                "observation_length": get_observation_length(
+                    train_args["cc_env_history_size"]
+                ),
+                "cc_env_actions": get_actions(train_args["num_actions"]),
+            }
         )
+
+        train_parser = train.get_parser()
+        train_flags = train_parser.parse_args(make_command(train_args))
 
         if flags.local:
             executor = submitit.LocalExecutor(folder=logdir)
         else:
             executor = submitit.SlurmExecutor(folder=logdir)
         executor.update_parameters(
-            partition="dev",
-            time=600,
+            partition="learnfair",
+            time=1200,
             nodes=1,
+            ntasks_per_node=1,
             job_name="mvrlfst",
             num_gpus=2,
             cpus_per_task=40,

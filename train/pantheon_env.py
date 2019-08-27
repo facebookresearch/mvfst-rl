@@ -280,7 +280,22 @@ def update_cmd(cmd, flags):
         [
             "--cc_env_mode=remote",
             "--cc_env_rpc_address={}".format(flags.server_address),
-            "--cc_env_time_window_ms=100",
+            "--cc_env_agg={}".format(flags.cc_env_agg),
+            "--cc_env_time_window_ms={}".format(flags.cc_env_time_window_ms),
+            "--cc_env_fixed_window_size={}".format(flags.cc_env_fixed_window_size),
+            "--cc_env_use_state_summary={}".format(flags.cc_env_use_state_summary),
+            "--cc_env_history_size={}".format(flags.cc_env_history_size),
+            "--cc_env_norm_ms={}".format(flags.cc_env_norm_ms),
+            "--cc_env_norm_bytes={}".format(flags.cc_env_norm_bytes),
+            "--cc_env_actions={}".format(flags.cc_env_actions),
+            "--cc_env_reward_throughput_factor={}".format(
+                flags.cc_env_reward_throughput_factor
+            ),
+            "--cc_env_reward_delay_factor={}".format(flags.cc_env_reward_delay_factor),
+            "--cc_env_reward_packet_loss_factor={}".format(
+                flags.cc_env_reward_packet_loss_factor
+            ),
+            "--cc_env_reward_max_delay={}".format(flags.cc_env_reward_max_delay),
             "-v={}".format(flags.v),
         ]
     )
