@@ -10,6 +10,7 @@ __pycache__/
 *$py.class
 
 # Logs and stuff
+logs/
 train/logs/
 scripts/logs/
 *checkpoint.tar*
