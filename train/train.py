@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# Run as python3 -m train.train
+
 import argparse
 import logging
 import multiprocessing as mp

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# Run as python3 -m scripts.slurm_launch
+
 import argparse
 import datetime
 import itertools
