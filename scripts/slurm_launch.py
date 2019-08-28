@@ -78,8 +78,9 @@ def make_command(params):
     return list(params)
 
 
-def get_observation_length(history_size):
-    return 100 + 6 * history_size
+def get_observation_length(history_size, num_actions):
+    # State summary stats (5 * 20) + history_size * (one-hot actions + cwnd)
+    return 100 + history_size * (num_actions + 1)
 
 
 def get_actions(num_actions):
@@ -126,7 +127,7 @@ def launch_train(flags):
             {
                 "base_logdir": logdir,
                 "observation_length": get_observation_length(
-                    train_args["cc_env_history_size"]
+                    train_args["cc_env_history_size"], train_args["num_actions"]
                 ),
                 "cc_env_actions": get_actions(train_args["num_actions"]),
             }
