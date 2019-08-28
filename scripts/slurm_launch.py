@@ -4,9 +4,11 @@
 
 import argparse
 import datetime
+import glob
 import itertools
 import logging
 import os
+import pickle as pkl
 from pprint import pprint
 
 import submitit
@@ -40,6 +42,10 @@ SWEEP_GRID = dict(
 
 def add_args(parser):
     parser.add_argument("--local", default=False, action="store_true")
+    parser.add_argument("--test_only", default=False, action="store_true")
+    parser.add_argument(
+        "--logdir", type=str, default=None, help="For --test_only mode."
+    )
 
 
 # key => k; some_key => sk
@@ -87,7 +93,25 @@ def get_actions(num_actions):
     return ACTIONS[num_actions]
 
 
-def main(flags):
+def get_executor(flags, logdir):
+    if flags.local:
+        executor = submitit.LocalExecutor(folder=logdir)
+    else:
+        executor = submitit.SlurmExecutor(folder=logdir)
+    executor.update_parameters(
+        partition="learnfair",
+        time=1200,
+        nodes=1,
+        ntasks_per_node=1,
+        job_name="mvrlfst",
+        num_gpus=2,
+        cpus_per_task=40,
+        mem="64GB",
+    )
+    return executor
+
+
+def launch_train(flags):
     now = datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f")
 
     sweep_grid = expand_args(SWEEP_GRID)
@@ -111,32 +135,42 @@ def main(flags):
         train_parser = train.get_parser()
         train_flags = train_parser.parse_args(make_command(train_args))
 
-        if flags.local:
-            executor = submitit.LocalExecutor(folder=logdir)
-        else:
-            executor = submitit.SlurmExecutor(folder=logdir)
-        executor.update_parameters(
-            partition="learnfair",
-            time=1200,
-            nodes=1,
-            ntasks_per_node=1,
-            job_name="mvrlfst",
-            num_gpus=2,
-            cpus_per_task=40,
-            mem="64GB",
-        )
-
+        executor = get_executor(flags, logdir)
         job = executor.submit(train.main, train_flags)
         logging.info(
-            "Submitted job {}/{}, id: {}, logdir: {}:".format(
+            "Submitted train job {}/{}, id: {}, logdir: {}:".format(
                 i + 1, len(sweep_grid), job.job_id, logdir
             )
         )
         pprint(train_args)
 
 
+def launch_test(flags):
+    assert flags.logdir and os.path.exists(
+        flags.logdir
+    ), "--logdir must be specified and should exist for --test_only mode"
+
+    submitit_files = glob.glob(os.path.join(flags.logdir, "*_submitted.pkl"))
+    assert len(submitit_files) > 0, "Couldn't find submitit submission pkl file"
+    with open(submitit_files[0], "rb") as f:
+        obj = pkl.load(f)
+        test_flags = obj.args[0]
+        test_flags.test_only = True
+
+    executor = get_executor(flags, flags.logdir)
+    job = executor.submit(train.main, test_flags)
+    logging.info(
+        "Submitted test job, id: {}, logdir: {}:".format(job.job_id, flags.logdir)
+    )
+    pprint(test_flags)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     add_args(parser)
     flags = parser.parse_args()
-    main(flags)
+
+    if flags.test_only:
+        launch_test(flags)
+    else:
+        launch_train(flags)

@@ -25,10 +25,7 @@ def get_parser():
     pantheon_env.add_args(pantheon_parser)
 
     parser.add_argument(
-        "--test_only",
-        default=False,
-        action="store_true",
-        help="If set, only test is run",
+        "--test_only", type=bool, default=False, help="If set, only test is run"
     )
     parser.add_argument("--base_logdir", type=str, default="logs")
 
@@ -44,6 +41,10 @@ def run(flags, train=True):
     os.makedirs(flags.savedir, exist_ok=True)
 
     flags.checkpoint = os.path.join(flags.base_logdir, "checkpoint.tar")
+    if not train:
+        assert os.path.exists(
+            flags.checkpoint
+        ), "Checkpoint {} missing in test mode".format(flags.checkpoint)
 
     # Unix domain socket path for RL server address
     address = "/tmp/rl_server_path"
