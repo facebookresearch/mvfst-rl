@@ -38,7 +38,7 @@ def run(flags, train=True):
 
     flags.logdir = os.path.join(flags.base_logdir, flags.mode)
     flags.savedir = os.path.join(flags.logdir, "torchbeast")
-    if not train:
+    if not train and os.path.exists(flags.logdir):
         # Clean run for test mode
         shutil.rmtree(flags.logdir)
     os.makedirs(flags.logdir, exist_ok=True)
