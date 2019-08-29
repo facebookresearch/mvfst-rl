@@ -266,12 +266,26 @@ def update_cmd(cmd, flags):
     else:
         schemes = " ".join(
             [
-                # TODO (viswanath): More schemes
                 "mvfst_rl",
                 "mvfst_cubic",
                 "mvfst_newreno",
                 "mvfst_copa",
                 "mvfst_bbr",
+                "bbr",
+                "copa",
+                "cubic",
+                "fillp",
+                "fillp_sheep",
+                "indigo",
+                "ledbat",
+                "pcc",
+                "pcc_experimental",
+                "scream",
+                "sprout",
+                "taova",
+                "vegas",
+                "verus",
+                "vivace",
             ]
         )
         run_times = flags.test_runs_per_job
