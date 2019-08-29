@@ -99,13 +99,21 @@ def get_executor(flags, logdir):
         executor = submitit.LocalExecutor(folder=logdir)
     else:
         executor = submitit.SlurmExecutor(folder=logdir)
+
+    if flags.test_only:
+        time = 120
+        num_gpus = 0
+    else:
+        time = 1200
+        num_gpus = 2
+
     executor.update_parameters(
         partition="learnfair",
-        time=1200,
+        time=time,
         nodes=1,
         ntasks_per_node=1,
         job_name="mvrlfst",
-        num_gpus=2,
+        num_gpus=num_gpus,
         cpus_per_task=40,
         mem="64GB",
     )

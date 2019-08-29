@@ -6,6 +6,7 @@ import argparse
 import logging
 import multiprocessing as mp
 import os
+import shutil
 
 from train import polybeast, pantheon_env, common
 
@@ -37,6 +38,9 @@ def run(flags, train=True):
 
     flags.logdir = os.path.join(flags.base_logdir, flags.mode)
     flags.savedir = os.path.join(flags.logdir, "torchbeast")
+    if not train:
+        # Clean run for test mode
+        shutil.rmtree(flags.logdir)
     os.makedirs(flags.logdir, exist_ok=True)
     os.makedirs(flags.savedir, exist_ok=True)
 
