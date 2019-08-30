@@ -21,6 +21,8 @@ import collections
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import warnings
+import glob
+import os
 
 import numpy as np
 import pandas as pd
@@ -291,7 +293,7 @@ def plot(
         if facet not in hmap:
             hmap[facet] = {}
         hmap[facet] = p
-    p = hv.HoloMap(hmap, kdims=["xpid"])
+    p = hv.HoloMap(hmap, kdims=["na", "lr"])
     p = hv.NdLayout(p).cols(cols)
     return p
 
@@ -336,20 +338,25 @@ def augment(data, results, x="step", y="mean_episode_return"):
 
 # +
 xp_filter = lambda _: True
-experiment_pivot = lambda c: "lr-%s" % c["args"]["learning_rate"]
-cluster_by = lambda c: c["args"]["xpid"]
+experiment_pivot = lambda c: ("na-%s" % c["args"]["num_actors"], "lr-%s" % c["args"]["learning_rate"])
+cluster_by = lambda c: "lstm-%s" % c["args"]["use_lstm"]
 
-dirs = [
-    "19-08-29_12-54-18-769443-ulFalse-na5-cetwm100-cermdFalse--00",
-    "19-08-29_12-54-18-769443-ulTrue-na9-cetwm100-cermdTrue--00",
-]
-paths = (
-    [
-        "/checkpoint/viswanath/mvrlfst/{}/train/torchbeast/latest".format(dir)
-        for dir in dirs
-    ],
-)
+pattern = "*19-08-30_08-18-43*"
 
+def get_paths(pattern):
+    logdirs = glob.glob("/checkpoint/viswanath/mvrlfst/{}".format(pattern))
+    all_paths = [os.path.join(logdir, "train/torchbeast/latest") for logdir in logdirs]
+
+    paths = []
+    for path in all_paths:
+        logf = os.path.join(path, "logs.csv")
+        if os.stat(logf).st_size == 0:
+            print(f"Empty logs.csv, skipping {path}")
+            continue
+        paths.append(path)
+    return paths
+
+paths = get_paths(pattern)
 data = load_experiments(paths, xp_filter, experiment_pivot, cluster_by)
 
 # # %%time
