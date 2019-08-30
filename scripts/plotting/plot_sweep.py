@@ -275,9 +275,8 @@ def plot(
     metrics,
     x="step",
     y="mean_episode_return",
-    model="model",
-    facet="env",
     palette="Set1",
+    kdims=["na", "lr"],
     cols=3,
 ):
     hmap = {}
@@ -293,7 +292,7 @@ def plot(
         if facet not in hmap:
             hmap[facet] = {}
         hmap[facet] = p
-    p = hv.HoloMap(hmap, kdims=["na", "lr"])
+    p = hv.HoloMap(hmap, kdims=kdims)
     p = hv.NdLayout(p).cols(cols)
     return p
 
@@ -370,6 +369,12 @@ data = load_experiments(paths, xp_filter, experiment_pivot, cluster_by)
 # %%time
 # %%opts Curve {+axiswise}
 # %%opts NdOverlay [legend_position='top_left']
-plot(data, cols=4, palette="Colorblind")
+plot(data, y='mean_episode_return', cols=4, palette="Colorblind")
+# plot(data, y='mean_episode_step', cols=4, palette="Colorblind")
+# plot(data, y='total_loss', cols=4, palette="Colorblind")
+# plot(data, y='pg_loss', cols=4, palette="Colorblind")
+# plot(data, y='baseline_loss', cols=4, palette="Colorblind")
+# plot(data, y='entropy_loss', cols=4, palette="Colorblind")
+# plot(data, y='learner_queue_size', cols=4, palette="Colorblind")
 
 # ## TODO: Auto-refresh
