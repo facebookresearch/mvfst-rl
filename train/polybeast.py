@@ -45,6 +45,9 @@ def add_args(parser):
         help="Length of the observation vector to be fed into the model.",
     )
     parser.add_argument(
+        "--hidden_size", type=int, default=512, help="Hidden size in FC model."
+    )
+    parser.add_argument(
         "--num_actions",
         type=int,
         default=5,
@@ -173,7 +176,7 @@ class Net(nn.Module):
 
     AgentOutput = collections.namedtuple("AgentOutput", "action policy_logits baseline")
 
-    def __init__(self, observation_shape, num_actions, use_lstm=False):
+    def __init__(self, observation_shape, hidden_size, num_actions, use_lstm=False):
         super(Net, self).__init__()
         self.observation_shape = observation_shape
         self.num_actions = num_actions
@@ -181,8 +184,8 @@ class Net(nn.Module):
 
         # Feature extraction.
         input_size = functools.reduce(operator.mul, observation_shape, 1)
-        self.fc1 = nn.Linear(input_size, 256)
-        self.fc2 = nn.Linear(256, 256)
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
 
         # FC output size + one-hot of last action + last reward.
         core_output_size = self.fc2.out_features + 1  # + num_actions
@@ -420,6 +423,7 @@ def train(flags):
 
     model = Net(
         observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
     )
@@ -427,6 +431,7 @@ def train(flags):
 
     actor_model = Net(
         observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
     )
@@ -571,6 +576,7 @@ def test(flags):
 
     model = Net(
         observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
     )

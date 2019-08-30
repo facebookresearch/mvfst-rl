@@ -28,6 +28,7 @@ SWEEP_GRID = dict(
     use_lstm=[False, True],
     epsilon=0.01,
     entropy_cost=0.01,
+    hidden_size=[512],
     num_actions=[5],
     reward_clipping=["soft_asymmetric"],
     cc_env_history_size=20,
