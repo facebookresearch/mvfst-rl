@@ -14,3 +14,4 @@ logs/
 train/logs/
 scripts/logs/
 *checkpoint.tar*
+scripts/plotting/.ipynb_checkpoints/
