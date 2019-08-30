@@ -138,26 +138,21 @@ float CongestionControlEnv::computeReward(
   avgThroughput /= states.size();
   avgDelay /= states.size();
 
-  // Convert back to original scale by undoing the normalization. This brings
-  // throughput and delay to a somewhat similar to scale, especially when
-  // taking log. That isn't the case for lost bytes though, so it'll be
-  // important to set the packetLossFactor to a very low value like 0.1.
-  // But honestly, all of this is dogscience.
-  float throughputBytesPerMs = avgThroughput * normBytes() / normMs();
-  float avgDelayMs = avgDelay * normMs();
-  float maxDelayMs = maxDelay * normMs();
-  float delayMs = (cfg_.maxDelayInReward ? maxDelayMs : avgDelayMs);
+  // Undo normalization and operate on bytes-per-sec units.
+  float throughputBytesPerSec = avgThroughput * normBytes() / normMs() * 1000.0;
+  float avgDelaySec = avgDelay * normMs() / 1000.0;
+  float maxDelaySec = maxDelay * normMs() / 1000.0;
+  float delaySec = (cfg_.maxDelayInReward ? maxDelaySec : avgDelaySec);
   float lostBytes = totalLost * normBytes();
 
-  // TODO (viswanath): Differences in reward scale based on network condition.
-  float reward = cfg_.throughputFactor * std::log(1 + throughputBytesPerMs) -
-                 cfg_.delayFactor * std::log(1 + delayMs) -
+  float reward = cfg_.throughputFactor * std::log(1 + throughputBytesPerSec) -
+                 cfg_.delayFactor * std::log(1 + delaySec) -
                  cfg_.packetLossFactor * std::log(1 + lostBytes);
   VLOG(1) << "Num states = " << states.size()
-          << ", avg throughput = " << throughputBytesPerMs
-          << " bytes/ms, avg delay = " << avgDelayMs
-          << " ms, max delay = " << maxDelayMs
-          << " ms total bytes lost = " << lostBytes << ", reward = " << reward;
+          << ", avg throughput = " << throughputBytesPerSec
+          << " bps, avg delay = " << avgDelaySec
+          << " s, max delay = " << maxDelaySec
+          << " s, total bytes lost = " << lostBytes << ", reward = " << reward;
   return reward;
 }
 

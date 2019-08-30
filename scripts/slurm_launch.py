@@ -21,22 +21,24 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 
 SWEEP_GRID = dict(
-    num_actors=40,
+    num_actors=[20, 40],
     unroll_length=80,
     total_steps=5000000,
-    learning_rate=0.00001,
+    learning_rate=[0.0001, 0.00001],
     use_lstm=[False, True],
     epsilon=0.01,
     entropy_cost=0.01,
-    num_actions=[5, 9],
-    cc_env_history_size=[0, 10, 20],
+    num_actions=[5],
+    reward_clipping=["soft_asymmetric"],
+    cc_env_history_size=20,
     cc_env_norm_ms=100.0,
     cc_env_norm_bytes=1000.0,
-    cc_env_time_window_ms=[50, 100],
+    cc_env_time_window_ms=100,
     cc_env_reward_throughput_factor=1.0,
-    cc_env_reward_delay_factor=[0.5],
-    cc_env_reward_packet_loss_factor=0.0,
-    cc_env_reward_max_delay=[False, True],
+    cc_env_reward_delay_factor=100.0,
+    cc_env_reward_packet_loss_factor=2.0,
+    cc_env_reward_max_delay=[True],
+    loglevel=1,
 )
 
 

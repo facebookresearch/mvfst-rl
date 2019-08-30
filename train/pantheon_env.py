@@ -55,7 +55,11 @@ def add_args(parser):
         help="Pantheon logs output directory",
     )
     parser.add_argument(
-        "-v", type=int, default=0, help="Verbose log-level for Pantheon sender"
+        "-v",
+        "--loglevel",
+        type=int,
+        default=1,
+        help="Verbose log-level for Pantheon sender",
     )
 
     # RLCongestionController args
@@ -311,7 +315,7 @@ def update_cmd(cmd, flags):
                 flags.cc_env_reward_packet_loss_factor
             ),
             "--cc_env_reward_max_delay={}".format(flags.cc_env_reward_max_delay),
-            "-v={}".format(flags.v),
+            "-v={}".format(flags.loglevel),
         ]
     )
     return shlex.split(cmd) + [

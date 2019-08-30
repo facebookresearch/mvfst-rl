@@ -43,8 +43,8 @@ DEFINE_string(cc_env_actions, "0,/2,-10,+10,*2",
               "first action is required to be 0 (no-op action).");
 DEFINE_double(cc_env_reward_throughput_factor, 1.0,
               "Throughput multiplier in reward");
-DEFINE_double(cc_env_reward_delay_factor, 0.5, "Delay multiplier in reward");
-DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
+DEFINE_double(cc_env_reward_delay_factor, 100.0, "Delay multiplier in reward");
+DEFINE_double(cc_env_reward_packet_loss_factor, 2.0,
               "Packet loss multiplier in reward");
 DEFINE_bool(cc_env_reward_max_delay, false,
             "Whether to take max delay over observations in reward."
