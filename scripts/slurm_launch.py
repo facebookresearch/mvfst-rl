@@ -23,20 +23,23 @@ os.environ["OMP_NUM_THREADS"] = "1"
 SWEEP_GRID = dict(
     num_actors=40,
     unroll_length=80,
-    total_steps=20000000,
-    learning_rate=0.0005,
-    use_lstm=True,
+    total_steps=10000000,
+    learning_rate=0.00001,
+    use_lstm=[True],
     epsilon=0.01,
     entropy_cost=0.01,
-    num_actions=[5, 9],
-    cc_env_history_size=[0, 10, 20],
+    hidden_size=512,
+    num_actions=[5, 9, 11],
+    reward_clipping="soft_asymmetric",
+    cc_env_history_size=20,
     cc_env_norm_ms=100.0,
     cc_env_norm_bytes=1000.0,
-    cc_env_time_window_ms=100,
+    cc_env_time_window_ms=[50, 100],
     cc_env_reward_throughput_factor=1.0,
-    cc_env_reward_delay_factor=[0.0, 0.5, 1.0],
-    cc_env_reward_packet_loss_factor=0.0,
-    cc_env_reward_max_delay=True,
+    cc_env_reward_delay_factor=[10.0, 25.0, 50.0, 100.0],
+    cc_env_reward_packet_loss_factor=2.0,
+    cc_env_reward_max_delay=[True],
+    loglevel=1,
 )
 
 
@@ -87,8 +90,8 @@ def get_actions(num_actions):
     ACTIONS = {
         5: "0,/2,-10,+10,*2",
         7: "0,/2,/1.5,-10,+10,*1.5,*2",
-        9: "0,/2,/1.5,/1.25,-10,+10,*1.25,*1.5,*2",
-        11: "0,/2,/1.5,/1.25,-10,-1,+1,+10,*1.25,*1.5,*2",
+        9: "0,/2,/1.5,/1.1,-10,+10,*1.1,*1.5,*2",
+        11: "0,/5,/2,/1.5,/1.1,-10,+10,*1.1,*1.5,*2,*5",
     }
     assert num_actions in ACTIONS, "Unsupported num_actions"
     return ACTIONS[num_actions]
@@ -99,13 +102,21 @@ def get_executor(flags, logdir):
         executor = submitit.LocalExecutor(folder=logdir)
     else:
         executor = submitit.SlurmExecutor(folder=logdir)
+
+    if flags.test_only:
+        time = 120
+        num_gpus = 0
+    else:
+        time = 1200
+        num_gpus = 2
+
     executor.update_parameters(
         partition="learnfair",
-        time=1200,
+        time=time,
         nodes=1,
         ntasks_per_node=1,
         job_name="mvrlfst",
-        num_gpus=2,
+        num_gpus=num_gpus,
         cpus_per_task=40,
         mem="64GB",
     )

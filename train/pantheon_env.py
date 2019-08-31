@@ -7,9 +7,9 @@ import logging
 import subprocess
 import random
 import shlex
+import shutil
 import threading
 import time
-from shutil import copyfile
 
 from train.constants import SRC_DIR, PANTHEON_ROOT
 from train import common, utils
@@ -55,7 +55,11 @@ def add_args(parser):
         help="Pantheon logs output directory",
     )
     parser.add_argument(
-        "-v", type=int, default=0, help="Verbose log-level for Pantheon sender"
+        "-v",
+        "--loglevel",
+        type=int,
+        default=1,
+        help="Verbose log-level for Pantheon sender",
     )
 
     # RLCongestionController args
@@ -163,6 +167,10 @@ def train_run(flags, jobs, thread_id):
         p.wait()
         episode += 1
 
+        # Remove pantheon logs to free up space
+        if os.path.exists(data_dir):
+            shutil.rmtree(data_dir)
+
 
 def test_run(flags, jobs, thread_id):
     """
@@ -196,7 +204,7 @@ def test_run(flags, jobs, thread_id):
     p = subprocess.Popen(analysis_cmd, env=pantheon_env)
     p.wait()
 
-    copyfile(
+    shutil.copyfile(
         path.join(data_dir, "pantheon_summary_mean.pdf"),
         path.join(flags.logdir, "test_expt{}.pdf".format(job_id)),
     )
@@ -266,12 +274,27 @@ def update_cmd(cmd, flags):
     else:
         schemes = " ".join(
             [
-                # TODO (viswanath): More schemes
                 "mvfst_rl",
+                "mvfst_random",
                 "mvfst_cubic",
                 "mvfst_newreno",
                 "mvfst_copa",
                 "mvfst_bbr",
+                "bbr",
+                "copa",
+                "cubic",
+                "fillp",
+                "fillp_sheep",
+                "indigo",
+                "ledbat",
+                "pcc",
+                "pcc_experimental",
+                "scream",
+                "sprout",
+                "taova",
+                "vegas",
+                "verus",
+                "vivace",
             ]
         )
         run_times = flags.test_runs_per_job
@@ -296,7 +319,7 @@ def update_cmd(cmd, flags):
                 flags.cc_env_reward_packet_loss_factor
             ),
             "--cc_env_reward_max_delay={}".format(flags.cc_env_reward_max_delay),
-            "-v={}".format(flags.v),
+            "-v={}".format(flags.loglevel),
         ]
     )
     return shlex.split(cmd) + [

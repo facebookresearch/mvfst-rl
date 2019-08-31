@@ -6,6 +6,7 @@ import argparse
 import logging
 import multiprocessing as mp
 import os
+import shutil
 
 from train import polybeast, pantheon_env, common
 
@@ -37,6 +38,9 @@ def run(flags, train=True):
 
     flags.logdir = os.path.join(flags.base_logdir, flags.mode)
     flags.savedir = os.path.join(flags.logdir, "torchbeast")
+    if not train and os.path.exists(flags.logdir):
+        # Clean run for test mode
+        shutil.rmtree(flags.logdir)
     os.makedirs(flags.logdir, exist_ok=True)
     os.makedirs(flags.savedir, exist_ok=True)
 
@@ -48,8 +52,10 @@ def run(flags, train=True):
 
     # Unix domain socket path for RL server address
     address = "/tmp/rl_server_path"
-    if os.path.exists(address):
+    try:
         os.remove(address)
+    except OSError:
+        pass
     flags.address = "unix:{}".format(address)
 
     flags.disable_cuda = not train

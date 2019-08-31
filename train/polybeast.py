@@ -45,6 +45,9 @@ def add_args(parser):
         help="Length of the observation vector to be fed into the model.",
     )
     parser.add_argument(
+        "--hidden_size", type=int, default=512, help="Hidden size in FC model."
+    )
+    parser.add_argument(
         "--num_actions",
         type=int,
         default=5,
@@ -173,7 +176,7 @@ class Net(nn.Module):
 
     AgentOutput = collections.namedtuple("AgentOutput", "action policy_logits baseline")
 
-    def __init__(self, observation_shape, num_actions, use_lstm=False):
+    def __init__(self, observation_shape, hidden_size, num_actions, use_lstm=False):
         super(Net, self).__init__()
         self.observation_shape = observation_shape
         self.num_actions = num_actions
@@ -181,8 +184,8 @@ class Net(nn.Module):
 
         # Feature extraction.
         input_size = functools.reduce(operator.mul, observation_shape, 1)
-        self.fc1 = nn.Linear(input_size, 256)
-        self.fc2 = nn.Linear(256, 256)
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
 
         # FC output size + one-hot of last action + last reward.
         core_output_size = self.fc2.out_features + 1  # + num_actions
@@ -209,18 +212,8 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
 
-        # # This can be done with F.one_hot in later PyTorch versions.
-        # last_action = inputs["last_action"].view(T * B, 1)
-        # one_hot_last_action = torch.zeros(T * B, self.num_actions)
-        # one_hot_last_action.scatter_(1, last_action, 1)
-
-        # TODO (viswanath): reward clipping?
-        # clipped_reward = torch.clamp(inputs["reward"], -1, 1).view(T * B, 1)
-        # core_input = torch.cat(
-        #    [x, clipped_reward, one_hot_last_action], dim=-1)
-        # core_input = torch.cat([x, clipped_reward], dim=-1)
-        reward = inputs["reward"].view(T * B, 1)
-        core_input = torch.cat([x, reward], dim=-1)
+        clipped_reward = torch.clamp(inputs["reward"], -1, 1).view(T * B, 1)
+        core_input = torch.cat([x, clipped_reward], dim=-1)
 
         if self.use_lstm:
             core_input = core_input.view(T, B, -1)
@@ -273,10 +266,6 @@ def inference(inference_batcher, model, flags, lock=threading.Lock()):  # noqa: 
             batch.set_outputs(outputs)
 
 
-# TODO(heiner): Given that our nest implementation doesn't support
-# namedtuples, using them here doesn't seem like a good fit. We
-# probably want to nestify the environment server and deal with
-# dictionaries?
 EnvOutput = collections.namedtuple(
     "EnvOutput", "frame rewards done episode_step episode_return"
 )
@@ -384,7 +373,6 @@ def learn(
 
         stats["learner_queue_size"] = learner_queue.size()
 
-        # TODO: log also SPS
         plogger.log(stats)
 
         if not len(episode_returns):
@@ -435,6 +423,7 @@ def train(flags):
 
     model = Net(
         observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
     )
@@ -442,6 +431,7 @@ def train(flags):
 
     actor_model = Net(
         observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
     )
@@ -586,6 +576,7 @@ def test(flags):
 
     model = Net(
         observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
     )

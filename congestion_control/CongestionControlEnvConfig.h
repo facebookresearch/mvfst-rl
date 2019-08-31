@@ -57,8 +57,8 @@ struct CongestionControlEnvConfig {
 
   // Multipliers for reward components
   float throughputFactor{1.0};
-  float delayFactor{0.5};
-  float packetLossFactor{0.0};
+  float delayFactor{100.0};
+  float packetLossFactor{2.0};
 
   // Whether to use max delay in reward (avg by default)
   bool maxDelayInReward{false};
