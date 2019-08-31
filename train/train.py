@@ -52,8 +52,10 @@ def run(flags, train=True):
 
     # Unix domain socket path for RL server address
     address = "/tmp/rl_server_path"
-    if os.path.exists(address):
+    try:
         os.remove(address)
+    except OSError:
+        pass
     flags.address = "unix:{}".format(address)
 
     flags.disable_cuda = not train

@@ -7,9 +7,9 @@ import logging
 import subprocess
 import random
 import shlex
+import shutil
 import threading
 import time
-from shutil import copyfile
 
 from train.constants import SRC_DIR, PANTHEON_ROOT
 from train import common, utils
@@ -167,6 +167,10 @@ def train_run(flags, jobs, thread_id):
         p.wait()
         episode += 1
 
+        # Remove pantheon logs to free up space
+        if os.path.exists(data_dir):
+            shutil.rmtree(data_dir)
+
 
 def test_run(flags, jobs, thread_id):
     """
@@ -200,7 +204,7 @@ def test_run(flags, jobs, thread_id):
     p = subprocess.Popen(analysis_cmd, env=pantheon_env)
     p.wait()
 
-    copyfile(
+    shutil.copyfile(
         path.join(data_dir, "pantheon_summary_mean.pdf"),
         path.join(flags.logdir, "test_expt{}.pdf".format(job_id)),
     )
