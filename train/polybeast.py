@@ -18,7 +18,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from train import common
+from train import common, utils
 from train.constants import TORCHBEAST_ROOT
 
 sys.path.append(TORCHBEAST_ROOT)
@@ -100,7 +100,10 @@ def add_args(parser):
     )
     parser.add_argument("--disable_cuda", action="store_true", help="Disable CUDA.")
     parser.add_argument(
-        "--use_lstm", type=bool, default=False, help="Use LSTM in agent model."
+        "--use_lstm",
+        type=utils.str2bool,
+        default="false",
+        help="Use LSTM in agent model.",
     )
 
     # Loss settings.

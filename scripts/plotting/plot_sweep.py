@@ -255,18 +255,25 @@ def plot_model(
 
 
 def plot_facet(
-    models, x="step", y="mean_episode_return", palette="Set1", model2color=None
+    models,
+    x="step",
+    y="mean_episode_return",
+    palette="Set1",
+    model2color=None,
+    kdims=["lstm"],
+    subsample=1000,
 ):
     if model2color is None:
         colors = hv.Palette(palette).values
+        colors = list(set(colors))
         model2color = {}
     hmap = {}
     for model, runs in models.items():
         if model not in model2color:
             model2color[model] = colors[len(model2color) - 1]
         color = model2color[model]
-        hmap[model] = plot_model(runs, x, y, model, color)
-    p = hv.HoloMap(hmap, kdims=["Model"])
+        hmap[model] = plot_model(runs, x, y, model, color, subsample)
+    p = hv.HoloMap(hmap, kdims=kdims)
     p = p.overlay()
     return p
 
@@ -276,19 +283,24 @@ def plot(
     x="step",
     y="mean_episode_return",
     palette="Set1",
-    kdims=["na", "lr"],
+    kdims=["lr"],
+    kdims_facet=["lstm"],
+    subsample=1000,
     cols=3,
 ):
     hmap = {}
     model2color = {}
     colors = hv.Palette(palette).values
+    colors = list(set(colors))
     for _facet, models in metrics.items():
         for model, _ in models.items():
             if model not in model2color:
                 model2color[model] = colors[len(model2color) - 1]
 
     for facet, models in metrics.items():
-        p = plot_facet(models, x, y, palette, model2color)
+        p = plot_facet(
+            models, x, y, palette, model2color, kdims=kdims_facet, subsample=subsample
+        )
         if facet not in hmap:
             hmap[facet] = {}
         hmap[facet] = p
@@ -336,12 +348,6 @@ def augment(data, results, x="step", y="mean_episode_return"):
 # ## Load data
 
 # +
-xp_filter = lambda _: True
-experiment_pivot = lambda c: ("na-%s" % c["args"]["num_actors"], "lr-%s" % c["args"]["learning_rate"])
-cluster_by = lambda c: "lstm-%s" % c["args"]["use_lstm"]
-
-pattern = "*19-08-30_08-18-43*"
-
 def get_paths(pattern):
     logdirs = glob.glob("/checkpoint/viswanath/mvrlfst/{}".format(pattern))
     all_paths = [os.path.join(logdir, "train/torchbeast/latest") for logdir in logdirs]
@@ -355,26 +361,41 @@ def get_paths(pattern):
         paths.append(path)
     return paths
 
+
+pattern = "*19-09-01_11-30-20-984086*"
+
+xp_filter = lambda c: c["args"]["cc_env_time_window_ms"] == 100
+experiment_pivot = lambda c: "rdelay-%s" % c["args"]["cc_env_reward_delay_factor"]
+cluster_by = lambda c: (
+    "actions-%s" % c["args"]["num_actions"],
+    "maxdelay-%s" % c["args"]["cc_env_reward_max_delay"],
+)
+
+kdims = ["rdelay"]
+kdims_facet = ["actions", "window"]
+
 paths = get_paths(pattern)
 data = load_experiments(paths, xp_filter, experiment_pivot, cluster_by)
 
-# # %%time
-# # %%opts NdOverlay [legend_position='top_left']
-# plot_model(data["AmidarNoFrameskip-v4"]["lr-0.0004"], color="#000000", subsample=1000)
-
-# # %%time
-# # %%opts NdOverlay [legend_position='top_left']
-# plot_facet(data["AmidarNoFrameskip-v4"], palette="Colorblind")
+y = "mean_episode_return"
+# y = 'mean_episode_step'
+# y = 'total_loss'
+# y = 'pg_loss'
+# y = 'baseline_loss'
+# y = 'entropy_loss'
+# y = 'learner_queue_size'
 
 # %%time
 # %%opts Curve {+axiswise}
 # %%opts NdOverlay [legend_position='top_left']
-plot(data, y='mean_episode_return', cols=4, palette="Colorblind")
-# plot(data, y='mean_episode_step', cols=4, palette="Colorblind")
-# plot(data, y='total_loss', cols=4, palette="Colorblind")
-# plot(data, y='pg_loss', cols=4, palette="Colorblind")
-# plot(data, y='baseline_loss', cols=4, palette="Colorblind")
-# plot(data, y='entropy_loss', cols=4, palette="Colorblind")
-# plot(data, y='learner_queue_size', cols=4, palette="Colorblind")
+plot(
+    data,
+    y=y,
+    cols=4,
+    palette="Colorblind",
+    kdims=kdims,
+    kdims_facet=kdims_facet,
+    subsample=100,
+)
 
 # ## TODO: Auto-refresh

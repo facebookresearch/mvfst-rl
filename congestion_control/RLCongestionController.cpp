@@ -150,7 +150,7 @@ bool RLCongestionController::setNetworkState(
 
   if (ack && ack->largestAckedPacket.hasValue()) {
     obs[Field::ACKED] = ack->ackedBytes / normBytes;
-    obs[Field::THROUGHPUT] = obs[Field::ACKED] / obs[Field::RTT_STANDING];
+    obs[Field::THROUGHPUT] = obs[Field::ACKED] / obs[Field::RTT_MIN];
   }
 
   if (loss) {

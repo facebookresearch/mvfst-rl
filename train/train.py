@@ -8,7 +8,7 @@ import multiprocessing as mp
 import os
 import shutil
 
-from train import polybeast, pantheon_env, common
+from train import polybeast, pantheon_env, common, utils
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,7 +26,10 @@ def get_parser():
     pantheon_env.add_args(pantheon_parser)
 
     parser.add_argument(
-        "--test_only", type=bool, default=False, help="If set, only test is run"
+        "--test_only",
+        type=utils.str2bool,
+        default="false",
+        help="If set, only test is run",
     )
     parser.add_argument("--base_logdir", type=str, default="logs")
 
