@@ -121,20 +121,20 @@ def add_args(parser):
     parser.add_argument(
         "--cc_env_reward_delay_factor",
         type=float,
-        default=0.5,
+        default=100.0,
         help="Delay multiplier in reward",
     )
     parser.add_argument(
         "--cc_env_reward_packet_loss_factor",
         type=float,
-        default=0.0,
+        default=2.0,
         help="Packet loss multiplier in reward",
     )
     parser.add_argument(
         "--cc_env_reward_max_delay",
         type=bool,
-        default=False,
-        help="Whether to take max delay over observations in reward (avg delay by default)",
+        default=True,
+        help="Whether to take max delay over observations in reward (avg otherwise)",
     )
 
 

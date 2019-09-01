@@ -150,7 +150,7 @@ float CongestionControlEnv::computeReward(
                  cfg_.packetLossFactor * std::log(1 + lostBytes);
   VLOG(1) << "Num states = " << states.size()
           << ", avg throughput = " << throughputBytesPerSec
-          << " bps, avg delay = " << avgDelaySec
+          << " bytes/sec, avg delay = " << avgDelaySec
           << " s, max delay = " << maxDelaySec
           << " s, total bytes lost = " << lostBytes << ", reward = " << reward;
   return reward;

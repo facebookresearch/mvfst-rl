@@ -362,13 +362,13 @@ def get_paths(pattern):
     return paths
 
 
-pattern = "*19-08-31_09-37-09*"
+pattern = "*19-09-01_07-34-22-523018*"
 
 xp_filter = lambda c: c["args"]["cc_env_time_window_ms"] == 100
 experiment_pivot = lambda c: "rdelay-%s" % c["args"]["cc_env_reward_delay_factor"]
 cluster_by = lambda c: (
     "actions-%s" % c["args"]["num_actions"],
-    "window-%s" % c["args"]["cc_env_time_window_ms"],
+    "maxdelay-%s" % c["args"]["cc_env_reward_max_delay"],
 )
 
 kdims = ["rdelay"]

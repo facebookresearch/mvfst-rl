@@ -60,8 +60,8 @@ struct CongestionControlEnvConfig {
   float delayFactor{100.0};
   float packetLossFactor{2.0};
 
-  // Whether to use max delay in reward (avg by default)
-  bool maxDelayInReward{false};
+  // Whether to use max delay within a window in reward (avg otherwise)
+  bool maxDelayInReward{true};
 
   /// Helper functions
 

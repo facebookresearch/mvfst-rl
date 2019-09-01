@@ -46,9 +46,9 @@ DEFINE_double(cc_env_reward_throughput_factor, 1.0,
 DEFINE_double(cc_env_reward_delay_factor, 100.0, "Delay multiplier in reward");
 DEFINE_double(cc_env_reward_packet_loss_factor, 2.0,
               "Packet loss multiplier in reward");
-DEFINE_bool(cc_env_reward_max_delay, false,
+DEFINE_bool(cc_env_reward_max_delay, true,
             "Whether to take max delay over observations in reward."
-            "By default, avg delay is used.");
+            "Otherwise, avg delay is used.");
 
 using namespace quic::traffic_gen;
 using Config = quic::CongestionControlEnv::Config;
