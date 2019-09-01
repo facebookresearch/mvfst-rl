@@ -362,7 +362,7 @@ def get_paths(pattern):
     return paths
 
 
-pattern = "*19-09-01_07-34-22-523018*"
+pattern = "*19-09-01_11-30-20-984086*"
 
 xp_filter = lambda c: c["args"]["cc_env_time_window_ms"] == 100
 experiment_pivot = lambda c: "rdelay-%s" % c["args"]["cc_env_reward_delay_factor"]

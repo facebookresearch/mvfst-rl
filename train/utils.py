@@ -1,9 +1,19 @@
+import argparse
 import yaml
 import string
 import itertools
 from datetime import datetime
 
 from train.constants import SRC_DIR, PANTHEON_ROOT, EXPERIMENTS_CFG
+
+
+def str2bool(v):
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
 class SafeDict(dict):

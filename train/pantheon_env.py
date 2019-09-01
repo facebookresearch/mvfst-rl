@@ -84,8 +84,8 @@ def add_args(parser):
     )
     parser.add_argument(
         "--cc_env_use_state_summary",
-        type=bool,
-        default=True,
+        type=utils.str2bool,
+        default="true",
         help="Whether to use state summary instead of raw states in observation (auto-enabled for time window aggregation)",
     )
     parser.add_argument(
@@ -132,8 +132,8 @@ def add_args(parser):
     )
     parser.add_argument(
         "--cc_env_reward_max_delay",
-        type=bool,
-        default=True,
+        type=utils.str2bool,
+        default="true",
         help="Whether to take max delay over observations in reward (avg otherwise)",
     )
 
