@@ -365,14 +365,14 @@ def get_paths(pattern):
 pattern = "*19-09-01_11-30-20-984086*"
 
 xp_filter = lambda c: c["args"]["cc_env_time_window_ms"] == 100
-experiment_pivot = lambda c: "rdelay-%s" % c["args"]["cc_env_reward_delay_factor"]
-cluster_by = lambda c: (
-    "actions-%s" % c["args"]["num_actions"],
+experiment_pivot = lambda c: (
+    "rdelay-%s" % c["args"]["cc_env_reward_delay_factor"],
     "maxdelay-%s" % c["args"]["cc_env_reward_max_delay"],
 )
+cluster_by = lambda c: "actions-%s" % c["args"]["num_actions"]
 
-kdims = ["rdelay"]
-kdims_facet = ["actions", "window"]
+kdims = ["rd", "md"]
+kdims_facet = ["actions"]
 
 paths = get_paths(pattern)
 data = load_experiments(paths, xp_filter, experiment_pivot, cluster_by)
