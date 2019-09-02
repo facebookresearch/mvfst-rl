@@ -122,8 +122,16 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
 
     TransportSettings settings;
     settings.defaultCongestionController = cc_algo_;
-    quicClient_->setTransportSettings(settings);
 
+    // Often times flow control becomes the bottleneck and prevents accurate
+    // analysis of congestion control. Effectively disable it by setting a large
+    // window size.
+    settings.advertisedInitialConnectionWindowSize = 1e8;
+    settings.advertisedInitialBidiLocalStreamWindowSize = 1e8;
+    settings.advertisedInitialBidiRemoteStreamWindowSize = 1e8;
+    settings.advertisedInitialUniStreamWindowSize = 1e8;
+
+    quicClient_->setTransportSettings(settings);
     quicClient_->start(this);
   }
 
