@@ -35,6 +35,11 @@ void CongestionControlEnv::onAction(const Action& action) {
     // Update history
     history_.pop_front();
     history_.emplace_back(action, cwndBytes_ / normBytes());
+
+    const auto& elapsed = std::chrono::duration<float, std::milli>(
+        std::chrono::steady_clock::now() - lastObservationTime_);
+    VLOG(1) << "Action updated (cwndAction= " << action.cwndAction
+            << "), policy elapsed time = " << elapsed.count() << " ms";
   });
 }
 
@@ -78,6 +83,7 @@ void CongestionControlEnv::handleStates() {
 
   VLOG(2) << __func__ << ' ' << obs;
 
+  lastObservationTime_ = std::chrono::steady_clock::now();
   onObservation(std::move(obs), reward);
 }
 

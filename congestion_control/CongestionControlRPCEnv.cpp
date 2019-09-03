@@ -77,8 +77,6 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
   uint32_t episode_step = 0;
   float episode_return = 0.0;
   std::unique_lock<std::mutex> lock(mutex_);
-  std::chrono::time_point<std::chrono::steady_clock> policyBegin;
-  std::chrono::duration<float, std::milli> policyElapsed;
 
   while (!shutdown_) {
     step_pb.Clear();
@@ -92,8 +90,6 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
       }
       return;
     }
-
-    policyBegin = std::chrono::steady_clock::now();
 
     // The lifetime of a connection is seen as a single episode, so
     // done is set to true only at the beginning of the episode (to mark
@@ -117,11 +113,6 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
     }
     action.cwndAction = action_pb.action();
     onAction(action);
-
-    policyElapsed = std::chrono::duration<float, std::milli>(
-        std::chrono::steady_clock::now() - policyBegin);
-    VLOG(1) << "Action updated, policy elapsed time = " << policyElapsed.count()
-            << " ms";
   }
 }
 

@@ -132,6 +132,8 @@ class CongestionControlEnv {
 
   // Intermediate tensor to compute state summary
   torch::Tensor summaryTensor_{torch::empty({0}, torch::kFloat32)};
+
+  std::chrono::time_point<std::chrono::steady_clock> lastObservationTime_;
 };
 
 std::ostream& operator<<(std::ostream& os,
