@@ -93,7 +93,7 @@ function setup_libtorch() {
 
   wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
 
-  #This creates and populates $LIBTORCH_DIR
+  # This creates and populates $LIBTORCH_DIR
   unzip libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
   rm -f libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
 
