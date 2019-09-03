@@ -1,5 +1,7 @@
 #!/bin/bash -eu
 
+set -eu
+
 ## Usage: ./setup.sh [--force]
 
 # Note: Pantheon requires python 2.7 while torchbeast needs python3.7.
@@ -87,24 +89,13 @@ function setup_libtorch() {
   # mv-rl-fst such as traffic_gen don't need to be unnecessarily linked
   # with CUDA libs, especially during inference.
   echo -e "Installing libtorch CPU-only build into $LIBTORCH_DIR"
-  mkdir -p "$LIBTORCH_DIR" && cd "$LIBTORCH_DIR"
+  cd "$DEPS_DIR"
 
-  conda install -y mkl mkl-include
-  conda install -y numpy ninja pyyaml setuptools cmake cffi typing
+  wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
 
-  # TODO: This is ugly, can we avoid installing from source?
-  # Ideally we would just wget libtorch as in
-  # https://pytorch.org/cppdocs/installing.html, but there seem to be C++ ABI
-  # issues such as https://github.com/pytorch/pytorch/issues/15138.
-  PYTORCH_DIR="$LIBTORCH_DIR/pytorch"
-  if [ ! -d "$PYTORCH_DIR" ]; then
-    echo -e "Cloning PyTorch into $PYTORCH_DIR"
-    git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
-  fi
-  cd "$PYTORCH_DIR"
-  git checkout v1.2.0
-  git submodule sync && git submodule update --init --recursive
-  CMAKE_PREFIX_PATH=$CONDA_PREFIX USE_CUDA=0 python3 setup.py install --install-lib="$LIBTORCH_DIR"
+  #This creates and populates $LIBTORCH_DIR
+  unzip libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
+  rm -f libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
 
   echo -e "Done installing libtorch"
 }
@@ -120,6 +111,9 @@ function setup_torchbeast() {
   # TODO (viswanath): Update path
   echo -e "Installing PyTorch with CUDA for TorchBeast"
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
+
+  # requirements_polybeast.txt includes nest which requires pybind11.
+  python3 -m pip install pybind11
 
   python3 -m pip install -r requirements_polybeast.txt
 
