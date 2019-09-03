@@ -25,7 +25,7 @@ SWEEP_GRID = dict(
     unroll_length=80,
     total_steps=5000000,
     learning_rate=0.00001,
-    use_lstm=[True],
+    use_lstm=True,
     epsilon=0.01,
     entropy_cost=0.01,
     hidden_size=512,
@@ -34,11 +34,11 @@ SWEEP_GRID = dict(
     cc_env_history_size=20,
     cc_env_norm_ms=100.0,
     cc_env_norm_bytes=1000.0,
-    cc_env_time_window_ms=[100],
+    cc_env_time_window_ms=100,
     cc_env_reward_throughput_factor=1.0,
-    cc_env_reward_delay_factor=[0.0, 10.0, 25.0],
+    cc_env_reward_delay_factor=[0.0, 10.0, 50.0, 100.0],
     cc_env_reward_packet_loss_factor=[0.0, 1.0, 2.0],
-    cc_env_reward_max_delay=[False, True],
+    cc_env_reward_max_delay=True,
     loglevel=1,
 )
 
