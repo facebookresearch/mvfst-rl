@@ -355,6 +355,9 @@ def get_paths(pattern):
     paths = []
     for path in all_paths:
         logf = os.path.join(path, "logs.csv")
+        if not os.path.exists(logf):
+            print(f"logs.csv not found, skipping {path}")
+            continue
         if os.stat(logf).st_size == 0:
             print(f"Empty logs.csv, skipping {path}")
             continue
@@ -362,7 +365,7 @@ def get_paths(pattern):
     return paths
 
 
-pattern = "*19-09-02_07-38-07-476184*"
+pattern = "*19-09-02_13-54-47-873664*"
 
 xp_filter = lambda c: c["args"]["cc_env_time_window_ms"] == 100
 experiment_pivot = lambda c: (

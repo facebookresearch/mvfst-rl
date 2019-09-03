@@ -36,8 +36,8 @@ SWEEP_GRID = dict(
     cc_env_norm_bytes=1000.0,
     cc_env_time_window_ms=[100],
     cc_env_reward_throughput_factor=1.0,
-    cc_env_reward_delay_factor=[0.0, 10.0, 50.0, 100.0],
-    cc_env_reward_packet_loss_factor=2.0,
+    cc_env_reward_delay_factor=[0.0, 10.0, 25.0],
+    cc_env_reward_packet_loss_factor=[0.0, 1.0, 2.0],
     cc_env_reward_max_delay=[False, True],
     loglevel=1,
 )
