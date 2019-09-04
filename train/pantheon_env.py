@@ -274,31 +274,30 @@ def update_cmd(cmd, flags):
     else:
         schemes = " ".join(
             [
-                "mvfst_rl", # TODO slog rl
-                # TODO slog
-                # "mvfst_copa",
-                # "mvfst_random",
-                # "mvfst_cubic",
-                # "mvfst_newreno",
-                # "mvfst_bbr",
-                # "bbr",
-                # "copa",
-                # "cubic",
-                # "fillp",
-                # "fillp_sheep",
-                # "indigo",
-                # "ledbat",
-                # "pcc",
-                # "pcc_experimental",
-                # "scream",
-                # "sprout",
-                # "taova",
-                # "vegas",
-                # "verus",
-                # "vivace",
+                "mvfst_rl",
+                "mvfst_copa",
+                "mvfst_random",
+                "mvfst_cubic",
+                "mvfst_newreno",
+                "mvfst_bbr",
+                "bbr",
+                "copa",
+                "cubic",
+                "fillp",
+                "fillp_sheep",
+                "indigo",
+                "ledbat",
+                "pcc",
+                "pcc_experimental",
+                "scream",
+                "sprout",
+                "taova",
+                "vegas",
+                "verus",
+                "vivace",
             ]
         )
-        run_times = 1 # TODO slog flags.test_runs_per_job
+        run_times = flags.test_runs_per_job
 
     extra_sender_args = " ".join(
         [
