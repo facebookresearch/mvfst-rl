@@ -38,7 +38,8 @@ void CongestionControlEnv::onAction(const Action& action) {
 
     const auto& elapsed = std::chrono::duration<float, std::milli>(
         std::chrono::steady_clock::now() - lastObservationTime_);
-    VLOG(1) << "Action updated (cwndAction= " << action.cwndAction
+    VLOG(1) << "Action updated (cwndAction=" << action.cwndAction
+            << ", cwnd=" << cwndBytes_ / conn_.udpSendPacketLen
             << "), policy elapsed time = " << elapsed.count() << " ms";
   });
 }
@@ -166,15 +167,16 @@ void CongestionControlEnv::updateCwnd(const uint32_t actionIdx) {
   DCHECK_LT(actionIdx, cfg_.actions.size());
   const auto& op = cfg_.actions[actionIdx].first;
   const auto& val = cfg_.actions[actionIdx].second;
+  const auto& valBytes = val * conn_.udpSendPacketLen;
 
   switch (op) {
     case Config::ActionOp::NOOP:
       break;
     case Config::ActionOp::ADD:
-      cwndBytes_ += val * conn_.udpSendPacketLen;
+      cwndBytes_ += valBytes;
       break;
     case Config::ActionOp::SUB:
-      cwndBytes_ -= val * conn_.udpSendPacketLen;
+      cwndBytes_ = (cwndBytes_ >= valBytes) ? (cwndBytes_ - valBytes) : 0;
       break;
     case Config::ActionOp::MUL:
       cwndBytes_ = std::round(cwndBytes_ * val);
