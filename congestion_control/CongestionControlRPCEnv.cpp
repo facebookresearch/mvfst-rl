@@ -14,9 +14,9 @@ constexpr std::chrono::seconds kConnectTimeout{5};
 CongestionControlRPCEnv::CongestionControlRPCEnv(
     const Config& cfg, Callback* cob, const QuicConnectionStateBase& conn)
     : CongestionControlEnv(cfg, cob, conn) {
+  tensor_ = torch::empty({0}, torch::kFloat32);
   thread_ = std::make_unique<std::thread>(&CongestionControlRPCEnv::loop, this,
                                           cfg.rpcAddress);
-  tensor_ = torch::empty({0}, torch::kFloat32);
 
   // Wait until connected to gRPC server
   std::unique_lock<std::mutex> lock(mutex_);
@@ -35,7 +35,7 @@ void CongestionControlRPCEnv::onObservation(Observation&& obs, float reward) {
     // back for the previous observation. Although this should almost never
     // happen as model runtimes are sufficiently fast, we handle this safely
     // here by skipping this observation.
-    LOG(WARNING) << __func__ << ": Still waiting for an update "
+    LOG(WARNING) << __func__ << ": Still waiting for an update from "
                                 "ActorPoolServer, skipping observation.";
     return;
   }

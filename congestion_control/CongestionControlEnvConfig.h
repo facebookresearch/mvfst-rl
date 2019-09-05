@@ -33,7 +33,10 @@ struct CongestionControlEnvConfig {
 
   Mode mode{Mode::LOCAL};
 
-  // RL server address ("<host>:<port>" or "unix:<path>") for RPC Env.
+  // PyTorch traced model file to load for local mode
+  std::string modelFile{""};
+
+  // RL server address ("<host>:<port>" or "unix:<path>") for remote mode.
   std::string rpcAddress{"unix:/tmp/rl_server_path"};
 
   Aggregation aggregation{Aggregation::TIME_WINDOW};

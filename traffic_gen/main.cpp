@@ -13,11 +13,13 @@
 DEFINE_string(host, "::1", "Server hostname/IP");
 DEFINE_int32(port, 6666, "Server port");
 DEFINE_string(mode, "server", "Mode to run in: 'client' or 'server'");
-DEFINE_int32(chunk_size, 1024 * 1024, "Chunk size to send at once");
+DEFINE_int32(chunk_size, 64 * 1024, "Chunk size to send at once");
 DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
 DEFINE_string(
     cc_env_mode, "local",
     "CongestionControlEnv mode for RL cc_algo - [local|remote|random]");
+DEFINE_string(cc_env_model_file, "traced_model.pt",
+              "PyTorch traced model file for local mode");
 DEFINE_string(
     cc_env_rpc_address, "unix:/tmp/rl_server_path",
     "CongestionControlRPCEnv RL server address for training. Could "
@@ -67,6 +69,7 @@ makeRLCongestionControllerFactory() {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
 
+  cfg.modelFile = FLAGS_cc_env_model_file;
   cfg.rpcAddress = FLAGS_cc_env_rpc_address;
 
   if (FLAGS_cc_env_agg == "time") {

@@ -207,13 +207,18 @@ class Net(nn.Module):
         self.baseline = nn.Linear(core_output_size, 1)
 
     def initial_state(self, batch_size=1):
-        # Need similar shapes so that not to add extra flags in cpp code.
-        # Could not just delete the if, as self.core is created only if LSTM flag is on.
-        if not self.use_lstm:
-            # TODO (annaniki): use hidden_size flag after merging
-            return tuple(torch.zeros(1, batch_size, 257) for _ in range(2))
+        # Always return a tuple of two tensors so torch script type-checking
+        # passes. It's sufficient for core state to be
+        # Tuple[Tensor, Tensor] - the shapes don't matter.
+        if self.use_lstm:
+            core_num_layers = self.core.num_layers
+            core_hidden_size = self.core.hidden_size
+        else:
+            core_num_layers = 0
+            core_hidden_size = 0
+
         return tuple(
-            torch.zeros(self.core.num_layers, batch_size, self.core.hidden_size)
+            torch.zeros(core_num_layers, batch_size, core_hidden_size)
             for _ in range(2)
         )
 
