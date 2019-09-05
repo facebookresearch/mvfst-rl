@@ -600,7 +600,7 @@ def trace(flags):
     device = torch.device("cpu")
     checkpoint = torch.load(flags.checkpoint, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    model.to(device)
+    model = model.to(device)
 
     trace_model(flags, model)
 
@@ -610,14 +610,14 @@ def trace_model(flags, model):
         return
 
     model.eval()
-    model.cpu()
+    model = model.to(torch.device("cpu"))
     traced_model = torch.jit.trace(
         model,
         (
             dict(
                 frame=torch.rand(*flags.observation_shape),
                 reward=torch.rand(1, 1),
-                done=torch.ByteTensor(1, 1).random_(0, 1),
+                done=torch.ByteTensor(1, 1),
             ),
             model.initial_state(),
         ),
@@ -646,7 +646,7 @@ def test(flags):
     logging.info("Initializing weights from {} for testing.".format(flags.checkpoint))
     checkpoint = torch.load(flags.checkpoint, map_location=flags.actor_device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    model.to(flags.actor_device)
+    model = model.to(flags.actor_device)
 
     inference_batcher = actorpool.DynamicBatcher(
         batch_dim=1,
