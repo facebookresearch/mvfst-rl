@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CongestionControlLocalEnv.h"
 #include "CongestionControlRPCEnv.h"
 #include "CongestionControlRandomEnv.h"
 
@@ -15,8 +16,7 @@ class CongestionControlEnvFactory {
       const QuicConnectionStateBase& conn) {
     switch (cfg_.mode) {
       case CongestionControlEnv::Config::Mode::LOCAL:
-        LOG(FATAL) << "Local mode not yet implemented";
-        return nullptr;
+        return std::make_unique<CongestionControlLocalEnv>(cfg_, cob, conn);
       case CongestionControlEnv::Config::Mode::REMOTE:
         return std::make_unique<CongestionControlRPCEnv>(cfg_, cob, conn);
       case CongestionControlEnv::Config::Mode::RANDOM:

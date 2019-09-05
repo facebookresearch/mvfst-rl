@@ -32,10 +32,17 @@ from libtorchbeast import actorpool
 
 
 def add_args(parser):
+    parser.add_argument("--xpid", default=None, help="Experiment id (default: None).")
+
+    # Model output settings.
     parser.add_argument(
         "--checkpoint", default="checkpoint.tar", help="File to write checkpoints to."
     )
-    parser.add_argument("--xpid", default=None, help="Experiment id (default: None).")
+    parser.add_argument(
+        "--traced_model",
+        default="traced_model.pt",
+        help="File to write torchscript traced model to.",
+    )
 
     # Model settings.
     parser.add_argument(
@@ -200,10 +207,18 @@ class Net(nn.Module):
         self.baseline = nn.Linear(core_output_size, 1)
 
     def initial_state(self, batch_size=1):
-        if not self.use_lstm:
-            return tuple()
+        # Always return a tuple of two tensors so torch script type-checking
+        # passes. It's sufficient for core state to be
+        # Tuple[Tensor, Tensor] - the shapes don't matter.
+        if self.use_lstm:
+            core_num_layers = self.core.num_layers
+            core_hidden_size = self.core.hidden_size
+        else:
+            core_num_layers = 0
+            core_hidden_size = 0
+
         return tuple(
-            torch.zeros(self.core.num_layers, batch_size, self.core.hidden_size)
+            torch.zeros(core_num_layers, batch_size, core_hidden_size)
             for _ in range(2)
         )
 
@@ -568,6 +583,49 @@ def train(flags):
     for t in learner_threads + inference_threads:
         t.join()
 
+    # Trace and save the final model.
+    trace_model(flags, model)
+
+
+def trace(flags):
+    model = Net(
+        observation_shape=flags.observation_shape,
+        hidden_size=flags.hidden_size,
+        num_actions=flags.num_actions,
+        use_lstm=flags.use_lstm,
+    )
+    model.eval()
+
+    logging.info("Initializing weights from {} for tracing.".format(flags.checkpoint))
+    device = torch.device("cpu")
+    checkpoint = torch.load(flags.checkpoint, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model = model.to(device)
+
+    trace_model(flags, model)
+
+
+def trace_model(flags, model):
+    if not flags.traced_model:
+        return
+
+    model.eval()
+    model = model.to(torch.device("cpu"))
+    traced_model = torch.jit.trace(
+        model,
+        (
+            dict(
+                frame=torch.rand(*flags.observation_shape),
+                reward=torch.rand(1, 1),
+                done=torch.ByteTensor(1, 1),
+            ),
+            model.initial_state(),
+        ),
+    )
+
+    logging.info("Saving traced model to %s", flags.traced_model)
+    traced_model.save(flags.traced_model)
+
 
 def test(flags):
     if not flags.disable_cuda and torch.cuda.is_available():
@@ -588,7 +646,7 @@ def test(flags):
     logging.info("Initializing weights from {} for testing.".format(flags.checkpoint))
     checkpoint = torch.load(flags.checkpoint, map_location=flags.actor_device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    model.to(flags.actor_device)
+    model = model.to(flags.actor_device)
 
     inference_batcher = actorpool.DynamicBatcher(
         batch_dim=1,
@@ -654,22 +712,18 @@ def main(flags):
 
     flags.observation_shape = (1, 1, flags.observation_length)
 
+    dispatch = {"train": train, "test": test, "trace": trace}
+
     if flags.write_profiler_trace:
         logging.info("Running with profiler.")
         with torch.autograd.profiler.profile() as prof:
-            if flags.mode == "train":
-                train(flags)
-            else:
-                test(flags)
+            dispatch[flags.mode](flags)
         filename = "chrome-%s.trace" % time.strftime("%Y%m%d-%H%M%S")
         logging.info("Writing profiler trace to '%s.gz'", filename)
         prof.export_chrome_trace(filename)
         os.system("gzip %s" % filename)
     else:
-        if flags.mode == "train":
-            train(flags)
-        else:
-            test(flags)
+        dispatch[flags.mode](flags)
 
 
 if __name__ == "__main__":

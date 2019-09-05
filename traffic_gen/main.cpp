@@ -18,6 +18,8 @@ DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
 DEFINE_string(
     cc_env_mode, "local",
     "CongestionControlEnv mode for RL cc_algo - [local|remote|random]");
+DEFINE_string(cc_env_model_file, "traced_model.pt",
+              "PyTorch traced model file for local mode");
 DEFINE_string(
     cc_env_rpc_address, "unix:/tmp/rl_server_path",
     "CongestionControlRPCEnv RL server address for training. Could "
@@ -67,6 +69,7 @@ makeRLCongestionControllerFactory() {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
 
+  cfg.modelFile = FLAGS_cc_env_model_file;
   cfg.rpcAddress = FLAGS_cc_env_rpc_address;
 
   if (FLAGS_cc_env_agg == "time") {
