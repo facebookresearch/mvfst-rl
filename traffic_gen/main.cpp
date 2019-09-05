@@ -13,7 +13,7 @@
 DEFINE_string(host, "::1", "Server hostname/IP");
 DEFINE_int32(port, 6666, "Server port");
 DEFINE_string(mode, "server", "Mode to run in: 'client' or 'server'");
-DEFINE_int32(chunk_size, 64 * 1024, "Chunk size to send at once");
+DEFINE_int32(chunk_size, 1024 * 1024, "Chunk size to send at once");
 DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
 DEFINE_string(
     cc_env_mode, "local",

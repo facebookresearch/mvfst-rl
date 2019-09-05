@@ -99,8 +99,9 @@ def main(flags):
     logging.info("Mode={}".format(mode))
 
     if mode == "train":
-        # Train and then test
+        # Train, trace, and then test
         run(flags, train=True)
+        trace(flags)
         run(flags, train=False)
     elif mode == "test":
         # Only test
