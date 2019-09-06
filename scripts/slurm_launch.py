@@ -45,10 +45,10 @@ SWEEP_GRID = dict(
 
 def add_args(parser):
     parser.add_argument("--local", default=False, action="store_true")
-    parser.add_argument("--test_only", default=False, action="store_true")
     parser.add_argument(
-        "--logdir", type=str, default=None, help="For --test_only mode."
+        "--test_mode", default=None, choices=["local", "remote"], help="Test only mode."
     )
+    parser.add_argument("--logdir", type=str, default=None, help="For test only mode.")
 
 
 # key => k; some_key => sk
@@ -103,12 +103,12 @@ def get_executor(flags, logdir):
     else:
         executor = submitit.SlurmExecutor(folder=logdir)
 
-    if flags.test_only:
-        time = 120
-        num_gpus = 0
-    else:
+    if flags.test_mode is None:
         time = 1200
         num_gpus = 2
+    else:
+        time = 120
+        num_gpus = 0
 
     executor.update_parameters(
         partition="learnfair",
@@ -158,16 +158,17 @@ def launch_train(flags):
 
 
 def launch_test(flags):
+    assert flags.test_mode is not None
     assert flags.logdir and os.path.exists(
         flags.logdir
-    ), "--logdir must be specified and should exist for --test_only mode"
+    ), "--logdir must be specified and should exist for test only mode"
 
     submitit_files = glob.glob(os.path.join(flags.logdir, "*_submitted.pkl"))
     assert len(submitit_files) > 0, "Couldn't find submitit submission pkl file"
     with open(submitit_files[0], "rb") as f:
         obj = pkl.load(f)
         test_flags = obj.args[0]
-        test_flags.mode = "test"
+        test_flags.mode = "test_local" if flags.test_mode == "local" else "test"
 
     executor = get_executor(flags, flags.logdir)
     job = executor.submit(train.main, test_flags)
@@ -182,7 +183,7 @@ if __name__ == "__main__":
     add_args(parser)
     flags = parser.parse_args()
 
-    if flags.test_only:
-        launch_test(flags)
-    else:
+    if flags.test_mode is None:
         launch_train(flags)
+    else:
+        launch_test(flags)
