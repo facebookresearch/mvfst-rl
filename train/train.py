@@ -50,7 +50,7 @@ def init_logdirs(flags):
         ), "Checkpoint {} missing in {} mode".format(flags.checkpoint, flags.mode)
 
 
-def run(flags, train=True):
+def run_remote(flags, train=True):
     flags.mode = "train" if train else "test"
     init_logdirs(flags)
 
@@ -60,9 +60,10 @@ def run(flags, train=True):
         os.remove(address)
     except OSError:
         pass
-    flags.address = "unix:{}".format(address)
 
+    flags.address = "unix:{}".format(address)
     flags.disable_cuda = not train
+    flags.cc_env_mode = "remote"
 
     logging.info("Starting {}, logdir={}".format(flags.mode, flags.logdir))
     polybeast_proc = mp.Process(target=polybeast.main, args=(flags,))
@@ -84,7 +85,26 @@ def run(flags, train=True):
     logging.info("Done {}".format(flags.mode))
 
 
+def test_local(flags):
+    flags.mode = "test"
+    init_logdirs(flags)
+
+    if not os.path.exists(flags.traced_model):
+        logging.info("Missing traced model, tracing first")
+        trace(flags)
+        flags.mode = "test"
+
+    flags.cc_env_mode = "local"
+
+    logging.info("Starting local test, logdir={}".format(flags.logdir))
+    pantheon_proc = mp.Process(target=pantheon_env.main, args=(flags,))
+    pantheon_proc.start()
+    pantheon_proc.join()
+    logging.info("Done local test")
+
+
 def trace(flags):
+    flags.mode = "trace"
     init_logdirs(flags)
 
     logging.info("Tracing model from checkpoint {}".format(flags.checkpoint))
@@ -100,16 +120,19 @@ def main(flags):
 
     if mode == "train":
         # Train, trace, and then test
-        run(flags, train=True)
+        run_remote(flags, train=True)
         trace(flags)
-        run(flags, train=False)
+        run_remote(flags, train=False)
     elif mode == "test":
-        # Only test
-        run(flags, train=False)
+        # Only remote test
+        run_remote(flags, train=False)
+    elif mode == "test_local":
+        # Only local test
+        test_local(flags)
     elif mode == "trace":
         trace(flags)
     else:
-        assert False, "Unknown mode"
+        raise RuntimeError("Unknown mode {}".format(mode))
 
     logging.info(
         "All done! Checkpoint: {}, traced model: {}".format(

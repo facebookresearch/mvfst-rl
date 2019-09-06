@@ -64,6 +64,13 @@ def add_args(parser):
 
     # RLCongestionController args
     parser.add_argument(
+        "--cc_env_mode",
+        type=str,
+        default="remote",
+        choices=["local", "remote"],
+        help="CongestionControlEnvConfig::Mode. Local only support testing.",
+    )
+    parser.add_argument(
         "--cc_env_agg",
         type=str,
         default="time",
@@ -301,8 +308,9 @@ def update_cmd(cmd, flags):
 
     extra_sender_args = " ".join(
         [
-            "--cc_env_mode=remote",
+            "--cc_env_mode={}".format(flags.cc_env_mode),
             "--cc_env_rpc_address={}".format(flags.server_address),
+            "--cc_env_model_file={}".format(flags.traced_model),
             "--cc_env_agg={}".format(flags.cc_env_agg),
             "--cc_env_time_window_ms={}".format(flags.cc_env_time_window_ms),
             "--cc_env_fixed_window_size={}".format(flags.cc_env_fixed_window_size),

@@ -38,11 +38,6 @@ def add_args(parser):
     parser.add_argument(
         "--checkpoint", default="checkpoint.tar", help="File to write checkpoints to."
     )
-    parser.add_argument(
-        "--traced_model",
-        default="traced_model.pt",
-        help="File to write torchscript traced model to.",
-    )
 
     # Model settings.
     parser.add_argument(
@@ -218,8 +213,7 @@ class Net(nn.Module):
             core_hidden_size = 0
 
         return tuple(
-            torch.zeros(core_num_layers, batch_size, core_hidden_size)
-            for _ in range(2)
+            torch.zeros(core_num_layers, batch_size, core_hidden_size) for _ in range(2)
         )
 
     def forward(self, inputs, core_state):
@@ -550,7 +544,7 @@ def train(flags):
             time.sleep(5)
             end_step = stats.get("step", 0)
 
-            if timeit.default_timer() - last_checkpoint_time > 10 * 60:
+            if timeit.default_timer() - last_checkpoint_time > 10:
                 # Save every 10 min.
                 checkpoint()
                 last_checkpoint_time = timeit.default_timer()
@@ -712,18 +706,22 @@ def main(flags):
 
     flags.observation_shape = (1, 1, flags.observation_length)
 
+    def error_fn(flags):
+        raise RuntimeError("Unsupported mode {}".format(flags.mode))
+
     dispatch = {"train": train, "test": test, "trace": trace}
+    run_fn = dispatch.get(flags.mode, error_fn)
 
     if flags.write_profiler_trace:
         logging.info("Running with profiler.")
         with torch.autograd.profiler.profile() as prof:
-            dispatch[flags.mode](flags)
+            run_fn(flags)
         filename = "chrome-%s.trace" % time.strftime("%Y%m%d-%H%M%S")
         logging.info("Writing profiler trace to '%s.gz'", filename)
         prof.export_chrome_trace(filename)
         os.system("gzip %s" % filename)
     else:
-        dispatch[flags.mode](flags)
+        run_fn(flags)
 
 
 if __name__ == "__main__":
