@@ -158,6 +158,7 @@ def launch_train(flags):
 
 
 def launch_test(flags):
+    assert flags.test_mode is not None
     assert flags.logdir and os.path.exists(
         flags.logdir
     ), "--logdir must be specified and should exist for test only mode"
@@ -167,7 +168,7 @@ def launch_test(flags):
     with open(submitit_files[0], "rb") as f:
         obj = pkl.load(f)
         test_flags = obj.args[0]
-        test_flags.mode = "test_{}".format(flags.test_mode)
+        test_flags.mode = "test_local" if flags.test_mode == "local" else "test"
 
     executor = get_executor(flags, flags.logdir)
     job = executor.submit(train.main, test_flags)
