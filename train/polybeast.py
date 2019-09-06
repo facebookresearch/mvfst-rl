@@ -544,7 +544,7 @@ def train(flags):
             time.sleep(5)
             end_step = stats.get("step", 0)
 
-            if timeit.default_timer() - last_checkpoint_time > 10:
+            if timeit.default_timer() - last_checkpoint_time > 10 * 60:
                 # Save every 10 min.
                 checkpoint()
                 last_checkpoint_time = timeit.default_timer()
