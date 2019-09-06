@@ -167,7 +167,7 @@ def launch_test(flags):
     with open(submitit_files[0], "rb") as f:
         obj = pkl.load(f)
         test_flags = obj.args[0]
-        test_flags.test_only = True
+        test_flags.mode = "test"
 
     executor = get_executor(flags, flags.logdir)
     job = executor.submit(train.main, test_flags)
