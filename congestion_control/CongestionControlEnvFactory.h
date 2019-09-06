@@ -1,8 +1,11 @@
 #pragma once
 
 #include "CongestionControlLocalEnv.h"
-#include "CongestionControlRPCEnv.h"
 #include "CongestionControlRandomEnv.h"
+
+#ifndef MVRLFST_INFERENCE_ONLY
+ #include "CongestionControlRPCEnv.h"
+#endif
 
 namespace quic {
 
@@ -17,8 +20,10 @@ class CongestionControlEnvFactory {
     switch (cfg_.mode) {
       case CongestionControlEnv::Config::Mode::LOCAL:
         return std::make_unique<CongestionControlLocalEnv>(cfg_, cob, conn);
+#ifndef MVRLFST_INFERENCE_ONLY
       case CongestionControlEnv::Config::Mode::REMOTE:
         return std::make_unique<CongestionControlRPCEnv>(cfg_, cob, conn);
+#endif
       case CongestionControlEnv::Config::Mode::RANDOM:
         return std::make_unique<CongestionControlRandomEnv>(cfg_, cob, conn);
       default:

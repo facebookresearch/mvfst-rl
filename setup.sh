@@ -2,7 +2,7 @@
 
 set -eu
 
-## Usage: ./setup.sh [--force]
+## Usage: ./setup.sh [--force] [--inference]
 
 # Note: Pantheon requires python 2.7 while torchbeast needs python3.7.
 # Make sure your default python in conda env in python2.7 with an explicit
@@ -10,6 +10,7 @@ set -eu
 
 # ArgumentParser
 FORCE=false
+INFERENCE=false
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -20,12 +21,22 @@ while [[ $# -gt 0 ]]; do
       # already exists.
       FORCE=true
       shift;;
+    --inference )
+      # If --inference is specified, only get what we need to run inference
+      INFERENCE=true
+      shift;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
       shift;;
   esac
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
+
+INFERENCE_ARGUMENT=
+if [ "$INFERENCE" = true ]; then
+      INFERENCE_ARGUMENT=--inference
+fi
+
 
 CONDA_PREFIX=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
 
@@ -146,13 +157,17 @@ function setup_mvfst() {
 }
 
 if [ ! -d "$PANTHEON_DIR" ] || [ "$FORCE" = true ]; then
-  setup_pantheon
+  if [ "$INFERENCE" = false ]; then
+      setup_pantheon
+  fi
   setup_libtorch
-  setup_torchbeast
+  if [ "$INFERENCE" = false ]; then
+      setup_torchbeast
+  fi
   setup_mvfst
 else
   echo -e "$PANTHEON_DIR already exists, moving on"
 fi
 
 echo -e "Building mv-rl-fst"
-cd "$BASE_DIR" && ./build.sh
+cd "$BASE_DIR" && ./build.sh $INFERENCE_ARGUMENT

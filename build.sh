@@ -1,10 +1,11 @@
 #!/bin/bash -eu
 
-# Usage: ./build.sh [--dbg] [--clean]
+# Usage: ./build.sh [--dbg] [--clean] [--inference]
 
 # ArgumentParser
 BUILD_TYPE=RelWithDebInfo
 CLEAN=false
+INFERENCE=false
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -14,6 +15,10 @@ while [[ $# -gt 0 ]]; do
       shift;;
     --clean )
       CLEAN=true
+      shift;;
+    --inference )
+      # If --inference is specified, only build what we need for inference
+      INFERENCE=true
       shift;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
@@ -32,6 +37,12 @@ LIBTORCH_DIR="$DEPS_DIR"/libtorch
 MVFST_DIR="$BASE_DIR"/third-party/mvfst
 FOLLY_INSTALL_DIR="$MVFST_DIR"/_build/deps
 MVFST_INSTALL_DIR="$MVFST_DIR"/_build
+
+INFERENCE_ONLY=OFF
+if [ "$INFERENCE" == true ]; then
+    INFERENCE_ONLY=ON
+fi
+
 
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR" || exit
@@ -66,6 +77,7 @@ cmake                                        \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"      \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE"          \
   -DBUILD_TESTS=On                           \
+  -DINFERENCE_ONLY="$INFERENCE_ONLY"         \
   -DCONDA_PREFIX_PATH="$CONDA_PREFIX"   \
   ../..
 make -j "$nproc"

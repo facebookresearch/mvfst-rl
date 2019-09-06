@@ -3,10 +3,30 @@ add_library(
   CongestionControlEnv.cpp
   CongestionControlEnvConfig.cpp
   CongestionControlLocalEnv.cpp
-  CongestionControlRPCEnv.cpp
   NetworkState.cpp
   RLCongestionController.cpp
 )
+
+if(INFERENCE_ONLY)
+  target_compile_definitions(
+    rl_congestion_control PUBLIC
+    MVRLFST_INFERENCE_ONLY
+  )
+else()
+  # Add one more cpp
+  target_sources(
+    rl_congestion_control PRIVATE
+    CongestionControlRPCEnv.cpp
+  )
+  add_dependencies(
+    rl_congestion_control
+    rpcenv_pb
+  )
+  target_link_libraries(
+    rl_congestion_control PUBLIC
+    rpcenv_pb
+  )
+endif()
 
 target_compile_options(
   rl_congestion_control
@@ -17,7 +37,6 @@ target_compile_options(
 add_dependencies(
   rl_congestion_control
   mvfst
-  rpcenv_pb
 )
 
 target_include_directories(
@@ -29,7 +48,6 @@ target_link_libraries(
   rl_congestion_control PUBLIC
   mvfst
   ${TORCH_LIBRARIES}
-  rpcenv_pb
 )
 
 target_compile_definitions(
