@@ -3,6 +3,7 @@
 # Run as python3 -m train.train
 
 import argparse
+import copy
 import logging
 import multiprocessing as mp
 import os
@@ -91,8 +92,7 @@ def test_local(flags):
 
     if not os.path.exists(flags.traced_model):
         logging.info("Missing traced model, tracing first")
-        trace(flags)
-        flags.mode = "test"
+        trace(copy.deepcopy(flags))
 
     flags.cc_env_mode = "local"
 
