@@ -7,6 +7,8 @@ namespace quic {
 
 using Field = NetworkState::Field;
 
+static const float kBytesToMbits = 8.0 / 1024.0 / 1024.0;
+
 /// CongestionControlEnv impl
 
 CongestionControlEnv::CongestionControlEnv(const Config& cfg, Callback* cob,
@@ -145,21 +147,22 @@ float CongestionControlEnv::computeReward(
   avgThroughput /= states.size();
   avgDelay /= states.size();
 
-  // Undo normalization and operate on bytes-per-sec units.
-  float throughputBytesPerSec = avgThroughput * normBytes() / normMs() * 1000.0;
-  float avgDelaySec = avgDelay * normMs() / 1000.0;
-  float maxDelaySec = maxDelay * normMs() / 1000.0;
-  float delaySec = (cfg_.maxDelayInReward ? maxDelaySec : avgDelaySec);
-  float lostBytes = totalLost * normBytes();
+  // Undo normalization and convert to Mbits/sec for throughput and ms for
+  // delay.
+  float throughputMbps =
+      avgThroughput * normBytes() / normMs() * kBytesToMbits * 1000.0;
+  float avgDelayMs = avgDelay * normMs();
+  float maxDelayMs = maxDelay * normMs();
+  float delayMs = (cfg_.maxDelayInReward ? maxDelayMs : avgDelayMs);
+  float lostMbits = totalLost * normBytes() * kBytesToMbits;
 
-  float reward = cfg_.throughputFactor * std::log(1 + throughputBytesPerSec) -
-                 cfg_.delayFactor * std::log(1 + delaySec) -
-                 cfg_.packetLossFactor * std::log(1 + lostBytes);
+  float reward = cfg_.throughputFactor * throughputMbps -
+                 cfg_.delayFactor * delayMs - cfg_.packetLossFactor * lostMbits;
   VLOG(1) << "Num states = " << states.size()
-          << ", avg throughput = " << throughputBytesPerSec
-          << " bytes/sec, avg delay = " << avgDelaySec
-          << " s, max delay = " << maxDelaySec
-          << " s, total bytes lost = " << lostBytes << ", reward = " << reward;
+          << ", avg throughput = " << throughputMbps
+          << " Mbps, avg delay = " << avgDelayMs
+          << " ms, max delay = " << maxDelayMs
+          << " ms, total Mb lost = " << lostMbits << ", reward = " << reward;
   return reward;
 }
 
