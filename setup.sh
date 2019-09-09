@@ -2,25 +2,18 @@
 
 set -eu
 
-## Usage: ./setup.sh [--force] [--inference]
+## Usage: ./setup.sh [--inference]
 
 # Note: Pantheon requires python 2.7 while torchbeast needs python3.7.
 # Make sure your default python in conda env in python2.7 with an explicit
 # python3 command pointing to python 3.7
 
 # ArgumentParser
-FORCE=false
 INFERENCE=false
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
-    --force )
-      # If --force is specified, even if deps have already been setup,
-      # it's cleaned up and re-installed. Otherwise, we skip if pantheon dir
-      # already exists.
-      FORCE=true
-      shift;;
     --inference )
       # If --inference is specified, only get what we need to run inference
       INFERENCE=true
@@ -156,18 +149,12 @@ function setup_mvfst() {
   echo -e "Done installing mvfst"
 }
 
-if [ ! -d "$PANTHEON_DIR" ] || [ "$FORCE" = true ]; then
-  if [ "$INFERENCE" = false ]; then
-      setup_pantheon
-  fi
-  setup_libtorch
-  if [ "$INFERENCE" = false ]; then
-      setup_torchbeast
-  fi
-  setup_mvfst
-else
-  echo -e "$PANTHEON_DIR already exists, moving on"
+if [ "$INFERENCE" = false ]; then
+    setup_pantheon
+    setup_torchbeast
 fi
+setup_libtorch
+setup_mvfst
 
 echo -e "Building mv-rl-fst"
 cd "$BASE_DIR" && ./build.sh $INFERENCE_ARGUMENT
