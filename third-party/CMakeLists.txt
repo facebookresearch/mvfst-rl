@@ -1,28 +1,30 @@
 # Exports helper static libs from third-party deps
 
-# Lib for generated libtorchbeast protobuf files.
-# Somewhat follows from torchbeast/setup.py
-add_library(
-  rpcenv_pb STATIC
-  torchbeast/libtorchbeast/rpcenv.pb.cc 
-  torchbeast/libtorchbeast/rpcenv.grpc.pb.cc 
-)
+if(NOT INFERENCE_ONLY)
+  # Lib for generated libtorchbeast protobuf files.
+  # Somewhat follows from torchbeast/setup.py
+  add_library(
+    rpcenv_pb STATIC
+    torchbeast/libtorchbeast/rpcenv.pb.cc
+    torchbeast/libtorchbeast/rpcenv.grpc.pb.cc
+  )
 
-target_compile_options(
-  rpcenv_pb
-  PRIVATE
-  ${_QUIC_COMMON_COMPILE_OPTIONS}
-  -Wno-overloaded-virtual  # gRPC is noisy
-)
+  target_compile_options(
+    rpcenv_pb
+    PRIVATE
+    ${_QUIC_COMMON_COMPILE_OPTIONS}
+    -Wno-overloaded-virtual  # gRPC is noisy
+  )
 
-target_link_libraries(
-  rpcenv_pb PUBLIC
-  grpc
-  grpc++
-  gpr
-  address_sorting
-  protobuf
-)
+  target_link_libraries(
+    rpcenv_pb PUBLIC
+    grpc
+    grpc++
+    gpr
+    address_sorting
+    protobuf
+  )
+endif()
 
 # A single interface lib that links together all mvfst libs and dependencies
 # for ease of use.
