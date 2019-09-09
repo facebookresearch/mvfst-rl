@@ -187,34 +187,8 @@ CongestionControlType RLCongestionController::type() const noexcept {
 
 void RLCongestionController::setConnectionEmulation(uint8_t) noexcept {}
 
-bool RLCongestionController::canBePaced() const noexcept {
-  // Pacing not supported for now
-  return false;
-}
-
 uint64_t RLCongestionController::getBytesInFlight() const noexcept {
   return bytesInFlight_;
-}
-
-uint64_t RLCongestionController::getPacingRate(
-    TimePoint /* currentTime */) noexcept {
-  // Pacing is not supported currently
-  return conn_.transportSettings.writeConnectionDataPacketsLimit;
-}
-
-void RLCongestionController::markPacerTimeoutScheduled(
-    TimePoint /* currentTime*/) noexcept { /* unsupported */
-}
-
-std::chrono::microseconds RLCongestionController::getPacingInterval() const
-    noexcept {
-  // Pacing is not supported currently
-  return std::chrono::microseconds(
-      folly::HHWheelTimerHighRes::DEFAULT_TICK_INTERVAL);
-}
-
-void RLCongestionController::setMinimalPacingInterval(
-    std::chrono::microseconds interval) noexcept { /* unsupported */
 }
 
 void RLCongestionController::setAppIdle(bool,

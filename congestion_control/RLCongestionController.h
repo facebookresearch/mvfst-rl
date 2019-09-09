@@ -35,16 +35,6 @@ class RLCongestionController : public CongestionController,
   void setAppIdle(bool, TimePoint) noexcept override;
   void setAppLimited() override;
 
-  bool canBePaced() const noexcept override;
-
-  uint64_t getPacingRate(TimePoint currentTime) noexcept override;
-
-  void markPacerTimeoutScheduled(TimePoint currentTime) noexcept override;
-
-  std::chrono::microseconds getPacingInterval() const noexcept override;
-
-  void setMinimalPacingInterval(std::chrono::microseconds) noexcept override;
-
   bool isAppLimited() const noexcept override;
 
  private:
