@@ -40,7 +40,8 @@ MVFST_INSTALL_DIR="$MVFST_DIR"/_build
 
 INFERENCE_ONLY=OFF
 if [ "$INFERENCE" == true ]; then
-    INFERENCE_ONLY=ON
+  echo -e "Inference-only build"
+  INFERENCE_ONLY=ON
 fi
 
 

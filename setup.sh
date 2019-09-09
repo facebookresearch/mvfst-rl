@@ -25,9 +25,10 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
-INFERENCE_ARGUMENT=
+BUILD_ARGS=""
 if [ "$INFERENCE" = true ]; then
-      INFERENCE_ARGUMENT=--inference
+  echo -e "Inference-only build"
+  BUILD_ARGS="--inference"
 fi
 
 
@@ -157,4 +158,4 @@ setup_libtorch
 setup_mvfst
 
 echo -e "Building mv-rl-fst"
-cd "$BASE_DIR" && ./build.sh $INFERENCE_ARGUMENT
+cd "$BASE_DIR" && ./build.sh $BUILD_ARGS
