@@ -43,10 +43,10 @@ DEFINE_double(cc_env_norm_bytes, 1000.0,
 DEFINE_string(cc_env_actions, "0,/2,-10,+10,*2",
               "List of actions specifying how cwnd should be updated. The "
               "first action is required to be 0 (no-op action).");
-DEFINE_double(cc_env_reward_throughput_factor, 1.0,
+DEFINE_double(cc_env_reward_throughput_factor, 0.1,
               "Throughput multiplier in reward");
-DEFINE_double(cc_env_reward_delay_factor, 100.0, "Delay multiplier in reward");
-DEFINE_double(cc_env_reward_packet_loss_factor, 2.0,
+DEFINE_double(cc_env_reward_delay_factor, 0.01, "Delay multiplier in reward");
+DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
               "Packet loss multiplier in reward");
 DEFINE_bool(cc_env_reward_max_delay, true,
             "Whether to take max delay over observations in reward."

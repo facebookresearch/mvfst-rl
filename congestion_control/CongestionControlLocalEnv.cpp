@@ -4,7 +4,7 @@ namespace quic {
 
 namespace {
 // This should be polybeast.py --hidden_size + 1
-const int kLSTMHiddenSize = 513;
+const int kLSTMHiddenSize = 512 + 1;
 }
 
 CongestionControlLocalEnv::CongestionControlLocalEnv(

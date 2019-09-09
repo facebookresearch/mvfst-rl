@@ -122,19 +122,19 @@ def add_args(parser):
     parser.add_argument(
         "--cc_env_reward_throughput_factor",
         type=float,
-        default=1.0,
+        default=0.1,
         help="Throughput multiplier in reward",
     )
     parser.add_argument(
         "--cc_env_reward_delay_factor",
         type=float,
-        default=100.0,
+        default=0.01,
         help="Delay multiplier in reward",
     )
     parser.add_argument(
         "--cc_env_reward_packet_loss_factor",
         type=float,
-        default=2.0,
+        default=0.0,
         help="Packet loss multiplier in reward",
     )
     parser.add_argument(
