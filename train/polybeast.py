@@ -8,6 +8,7 @@ import functools
 import logging
 import operator
 import os
+import pickle
 import sys
 import threading
 import time
@@ -619,6 +620,13 @@ def trace_model(flags, model):
 
     logging.info("Saving traced model to %s", flags.traced_model)
     traced_model.save(flags.traced_model)
+
+    assert flags.traced_model.endswith(".pt"), flags.tracing
+    flags_filename = flags.traced_model[:-3] + ".flags.pkl"
+    logging.info("Saving flags to %s", flags_filename)
+    with open(flags_filename, "wb") as f:
+        # Dump with protocol 2 so that we can read the flags file in Python 2 in Pantheon.
+        pickle.dump(vars(flags), f, 2)
 
 
 def test(flags):
