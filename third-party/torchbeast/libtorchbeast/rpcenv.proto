@@ -1,0 +1,32 @@
+
+syntax = "proto2";
+
+package rpcenv;
+
+message Action {
+  optional int32 action = 1;
+}
+
+message NDArray {
+  optional int32 dtype = 1;
+  repeated int64 shape = 2 [packed = true];
+  optional bytes data = 3;
+};
+
+message ArrayNest {
+  optional NDArray array = 1;
+  repeated ArrayNest vector = 2;
+  map<string, ArrayNest> map = 3;
+};
+
+message Step {
+  optional ArrayNest observation = 1;
+  optional float reward = 2;
+  optional bool done = 3;
+  optional int32 episode_step = 4;
+  optional float episode_return = 5;
+}
+
+service ActorPoolServer {
+  rpc StreamingActor(stream Step) returns (stream Action) {}
+}

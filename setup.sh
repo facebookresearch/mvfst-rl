@@ -41,22 +41,26 @@ mkdir -p "$DEPS_DIR"
 
 PANTHEON_DIR="$DEPS_DIR"/pantheon
 LIBTORCH_DIR="$DEPS_DIR"/libtorch
-TORCHBEAST_DIR="$BASE_DIR"/third-party/torchbeast
-MVFST_DIR="$BASE_DIR"/third-party/mvfst
+THIRDPARTY_DIR="$BASE_DIR"/third-party
+TORCHBEAST_DIR="$THIRDPARTY_DIR"/torchbeast
+MVFST_DIR="$THIRDPARTY_DIR"/mvfst
 
 cd "$BASE_DIR"
 git submodule sync && git submodule update --init --recursive
 
 function setup_pantheon() {
+  if [ -d "$PANTHEON_DIR" ]; then
+    echo -e "$PANTHEON_DIR already exists, skipping."
+    return
+  fi
+
   # We clone Pantheon into _build/deps instead of using git submodule
   # to avoid circular dependency - pantheon/third_party/ has
   # this project as a submodule. For now, we clone and symlink
   # pantheon/third_party/mv-rl-fst to $BASE_DIR.
-  if [ ! -d "$PANTHEON_DIR" ]; then
-    echo -e "Cloning Pantheon into $PANTHEON_DIR"
-    # TODO (viswanath): Update repo url
-    git clone git@github.com:fairinternal/pantheon.git "$PANTHEON_DIR"
-  fi
+  echo -e "Cloning Pantheon into $PANTHEON_DIR"
+  # TODO (viswanath): Update repo url
+  git clone git@github.com:fairinternal/pantheon.git "$PANTHEON_DIR"
 
   echo -e "Installing Pantheon dependencies"
   cd "$PANTHEON_DIR"
@@ -71,7 +75,8 @@ function setup_pantheon() {
 
   # Copy mahimahi binaries to conda env (to be able to run in cluster)
   # with setuid bit.
-  cp /usr/bin/mm-*  "$CONDA_PREFIX"/bin/
+  rm -f "$CONDA_PREFIX"/bin/mm-*
+  cp /usr/bin/mm-* "$CONDA_PREFIX"/bin/
   sudo chown root:root "$CONDA_PREFIX"/bin/mm-*
   sudo chmod 4755 "$CONDA_PREFIX"/bin/mm-*
 
@@ -85,11 +90,15 @@ function setup_pantheon() {
   echo -e "Symlinking $PANTHEON_DIR/third_party/mv-rl-fst to $BASE_DIR"
   rm -rf $PANTHEON_DIR/third_party/mv-rl-fst
   ln -sf "$BASE_DIR" $PANTHEON_DIR/third_party/mv-rl-fst
-
   echo -e "Done setting up Pantheon"
 }
 
 function setup_libtorch() {
+  if [ -d "$LIBTORCH_DIR" ]; then
+    echo -e "$LIBTORCH_DIR already exists, skipping."
+    return
+  fi
+
   # Install CPU-only build of PyTorch libs so that C++ executables of
   # mv-rl-fst such as traffic_gen don't need to be unnecessarily linked
   # with CUDA libs, especially during inference.
@@ -101,15 +110,22 @@ function setup_libtorch() {
   # This creates and populates $LIBTORCH_DIR
   unzip libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
   rm -f libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
-
   echo -e "Done installing libtorch"
+}
+
+function setup_grpc() {
+  # Manually install grpc. We need this for mv-rl-fst in training mode.
+  # Note that this gets installed within the conda prefix which needs to be
+  # exported to cmake.
+  echo -e "Installing grpc"
+  conda install -y -c anaconda protobuf
+  cd "$BASE_DIR" && ./third-party/install_grpc.sh
+  echo -e "Done installing grpc"
 }
 
 function setup_torchbeast() {
   echo -e "Installing TorchBeast"
   cd "$TORCHBEAST_DIR"
-
-  module load NCCL/2.2.13-1-cuda.9.2
 
   # TorchBeast requires PyTorch with CUDA. This doesn't conflict the CPU-only
   # libtorch installation as the install locations are different.
@@ -117,41 +133,27 @@ function setup_torchbeast() {
   echo -e "Installing PyTorch with CUDA for TorchBeast"
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
 
-  # requirements_polybeast.txt includes nest which requires pybind11.
-  python3 -m pip install pybind11
+  python3 -m pip install -r requirements.txt
 
-  python3 -m pip install -r requirements_polybeast.txt
+  # Install nest
+  cd nest/ && CXX=c++ python3 -m pip install . -vv && cd ..
 
-  # Manually install grpc. We need this for mv-rl-fst.
-  # Note that this gets installed within the conda prefix which needs to be
-  # exported to cmake.
-  echo -e "Installing grpc"
-  conda install -y -c anaconda protobuf
-  ./scripts/install_grpc.sh
-
-  # We don't necessarily need to install libtorchbeast (we can get that from
-  # wheel), but setup.py also generates rpcenv protobuf files within
-  # torchbeast/libtorchbeast/ which we need.
-  # Remove previous installation first to make sure all files are overwritten.
-  python3 -m pip uninstall -y libtorchbeast
-  export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
+  export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH}
   CXX=c++ python3 setup.py install
-
   echo -e "Done installing TorchBeast"
 }
 
 function setup_mvfst() {
-  echo -e "Installing mvfst"
-
   # Build and install mvfst
+  echo -e "Installing mvfst"
   cd "$MVFST_DIR" && ./build_helper.sh
   cd _build/build/ && make install
-
   echo -e "Done installing mvfst"
 }
 
 if [ "$INFERENCE" = false ]; then
     setup_pantheon
+    setup_grpc
     setup_torchbeast
 fi
 setup_libtorch
