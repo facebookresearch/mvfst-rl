@@ -72,6 +72,7 @@ function setup_pantheon() {
 
   # Copy mahimahi binaries to conda env (to be able to run in cluster)
   # with setuid bit.
+  rm -f "$CONDA_PREFIX"/bin/mm-*
   cp /usr/bin/mm-*  "$CONDA_PREFIX"/bin/
   sudo chown root:root "$CONDA_PREFIX"/bin/mm-*
   sudo chmod 4755 "$CONDA_PREFIX"/bin/mm-*
