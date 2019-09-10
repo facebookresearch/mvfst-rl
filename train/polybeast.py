@@ -23,8 +23,8 @@ from train.constants import TORCHBEAST_ROOT
 
 sys.path.append(TORCHBEAST_ROOT)
 
-from torchbeast.core import file_writer
-from torchbeast.core import vtrace
+from core import file_writer
+from core import vtrace
 
 import nest
 

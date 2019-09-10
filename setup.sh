@@ -41,8 +41,9 @@ mkdir -p "$DEPS_DIR"
 
 PANTHEON_DIR="$DEPS_DIR"/pantheon
 LIBTORCH_DIR="$DEPS_DIR"/libtorch
-TORCHBEAST_DIR="$BASE_DIR"/third-party/torchbeast
-MVFST_DIR="$BASE_DIR"/third-party/mvfst
+THIRDPARTY_DIR="$BASE_DIR"/third-party
+TORCHBEAST_DIR="$THIRDPARTY_DIR"/torchbeast
+MVFST_DIR="$THIRDPARTY_DIR"/mvfst
 
 cd "$BASE_DIR"
 git submodule sync && git submodule update --init --recursive
@@ -85,7 +86,6 @@ function setup_pantheon() {
   echo -e "Symlinking $PANTHEON_DIR/third_party/mv-rl-fst to $BASE_DIR"
   rm -rf $PANTHEON_DIR/third_party/mv-rl-fst
   ln -sf "$BASE_DIR" $PANTHEON_DIR/third_party/mv-rl-fst
-
   echo -e "Done setting up Pantheon"
 }
 
@@ -101,7 +101,6 @@ function setup_libtorch() {
   # This creates and populates $LIBTORCH_DIR
   unzip libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
   rm -f libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
-
   echo -e "Done installing libtorch"
 }
 
@@ -119,37 +118,27 @@ function setup_torchbeast() {
   echo -e "Installing TorchBeast"
   cd "$TORCHBEAST_DIR"
 
-  module load NCCL/2.2.13-1-cuda.9.2
-
   # TorchBeast requires PyTorch with CUDA. This doesn't conflict the CPU-only
   # libtorch installation as the install locations are different.
   # TODO (viswanath): Update path
   echo -e "Installing PyTorch with CUDA for TorchBeast"
   python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
 
-  # requirements_polybeast.txt includes nest which requires pybind11.
-  python3 -m pip install pybind11
+  python3 -m pip install -r requirements.txt
 
-  python3 -m pip install -r requirements_polybeast.txt
+  # Install nest
+  cd nest/ && CXX=c++ python3 -m pip install . -vv && cd ..
 
-  # We don't necessarily need to install libtorchbeast (we can get that from
-  # wheel), but setup.py also generates rpcenv protobuf files within
-  # torchbeast/libtorchbeast/ which we need.
-  # Remove previous installation first to make sure all files are overwritten.
-  python3 -m pip uninstall -y libtorchbeast
-  export LD_LIBRARY_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}/lib:${LD_LIBRARY_PATH}
+  export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH}
   CXX=c++ python3 setup.py install
-
   echo -e "Done installing TorchBeast"
 }
 
 function setup_mvfst() {
-  echo -e "Installing mvfst"
-
   # Build and install mvfst
+  echo -e "Installing mvfst"
   cd "$MVFST_DIR" && ./build_helper.sh
   cd _build/build/ && make install
-
   echo -e "Done installing mvfst"
 }
 

@@ -1,0 +1,6 @@
+pybind11
+gitpython>=2.1  # For logging metadata.
+## dev packages
+flake8
+black
+pre-commit
