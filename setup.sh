@@ -49,15 +49,18 @@ cd "$BASE_DIR"
 git submodule sync && git submodule update --init --recursive
 
 function setup_pantheon() {
+  if [ -d "$PANTHEON_DIR" ]; then
+    echo -e "$PANTHEON_DIR already exists, skipping."
+    return
+  fi
+
   # We clone Pantheon into _build/deps instead of using git submodule
   # to avoid circular dependency - pantheon/third_party/ has
   # this project as a submodule. For now, we clone and symlink
   # pantheon/third_party/mv-rl-fst to $BASE_DIR.
-  if [ ! -d "$PANTHEON_DIR" ]; then
-    echo -e "Cloning Pantheon into $PANTHEON_DIR"
-    # TODO (viswanath): Update repo url
-    git clone git@github.com:fairinternal/pantheon.git "$PANTHEON_DIR"
-  fi
+  echo -e "Cloning Pantheon into $PANTHEON_DIR"
+  # TODO (viswanath): Update repo url
+  git clone git@github.com:fairinternal/pantheon.git "$PANTHEON_DIR"
 
   echo -e "Installing Pantheon dependencies"
   cd "$PANTHEON_DIR"
@@ -73,7 +76,7 @@ function setup_pantheon() {
   # Copy mahimahi binaries to conda env (to be able to run in cluster)
   # with setuid bit.
   rm -f "$CONDA_PREFIX"/bin/mm-*
-  cp /usr/bin/mm-*  "$CONDA_PREFIX"/bin/
+  cp /usr/bin/mm-* "$CONDA_PREFIX"/bin/
   sudo chown root:root "$CONDA_PREFIX"/bin/mm-*
   sudo chmod 4755 "$CONDA_PREFIX"/bin/mm-*
 
@@ -91,6 +94,11 @@ function setup_pantheon() {
 }
 
 function setup_libtorch() {
+  if [ -d "$LIBTORCH_DIR" ]; then
+    echo -e "$LIBTORCH_DIR already exists, skipping."
+    return
+  fi
+
   # Install CPU-only build of PyTorch libs so that C++ executables of
   # mv-rl-fst such as traffic_gen don't need to be unnecessarily linked
   # with CUDA libs, especially during inference.
