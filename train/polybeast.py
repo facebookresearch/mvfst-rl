@@ -230,7 +230,7 @@ class Net(nn.Module):
         if self.use_lstm:
             core_input = core_input.view(T, B, -1)
             core_output_list = []
-            notdone = (~inputs["done"]).float()
+            notdone = (1 - inputs["done"]).float()
             for input, nd in zip(core_input.unbind(), notdone.unbind()):
                 # Reset core state to zero whenever an episode ended.
                 # Make `done` broadcastable with (num_layers, B, hidden_size)
@@ -336,7 +336,7 @@ def learn(
         elif flags.reward_clipping == "none":
             clipped_rewards = env_outputs.rewards
 
-        discounts = (~env_outputs.done).float() * flags.discounting
+        discounts = (1 - env_outputs.done).float() * flags.discounting
 
         # This could be in C++. In TF, this is actually slower on the GPU.
         vtrace_returns = vtrace.from_logits(
