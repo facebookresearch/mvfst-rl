@@ -105,6 +105,16 @@ function setup_libtorch() {
   echo -e "Done installing libtorch"
 }
 
+function setup_grpc() {
+  # Manually install grpc. We need this for mv-rl-fst in training mode.
+  # Note that this gets installed within the conda prefix which needs to be
+  # exported to cmake.
+  echo -e "Installing grpc"
+  conda install -y -c anaconda protobuf
+  cd "$BASE_DIR" && ./third-party/install_grpc.sh
+  echo -e "Done installing grpc"
+}
+
 function setup_torchbeast() {
   echo -e "Installing TorchBeast"
   cd "$TORCHBEAST_DIR"
@@ -121,13 +131,6 @@ function setup_torchbeast() {
   python3 -m pip install pybind11
 
   python3 -m pip install -r requirements_polybeast.txt
-
-  # Manually install grpc. We need this for mv-rl-fst.
-  # Note that this gets installed within the conda prefix which needs to be
-  # exported to cmake.
-  echo -e "Installing grpc"
-  conda install -y -c anaconda protobuf
-  ./scripts/install_grpc.sh
 
   # We don't necessarily need to install libtorchbeast (we can get that from
   # wheel), but setup.py also generates rpcenv protobuf files within
@@ -152,6 +155,7 @@ function setup_mvfst() {
 
 if [ "$INFERENCE" = false ]; then
     setup_pantheon
+    setup_grpc
     setup_torchbeast
 fi
 setup_libtorch
