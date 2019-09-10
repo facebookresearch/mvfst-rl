@@ -155,6 +155,7 @@ class FileWriter:
 
         if to_log["_tick"] == 0:
             self._logfile.write("# %s\n" % ",".join(self.fieldnames))
+            self._logfile.flush()
 
         if verbose:
             self._logger.info(
@@ -163,6 +164,7 @@ class FileWriter:
             )
 
         self._logwriter.writerow(to_log)
+        self._logfile.flush()
 
     def close(self, successful: bool = True) -> None:
         self.metadata["date_end"] = datetime.datetime.now().strftime(
