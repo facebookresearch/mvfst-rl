@@ -7,7 +7,7 @@ namespace quic {
 
 using Field = NetworkState::Field;
 
-static const float kBytesToMbits = 8.0 / 1024.0 / 1024.0;
+static const float kBytesToMB = 1e-6;
 
 /// CongestionControlEnv impl
 
@@ -147,20 +147,20 @@ float CongestionControlEnv::computeReward(
   avgThroughput /= states.size();
   avgDelay /= states.size();
 
-  // Undo normalization and convert to Mbits/sec for throughput and ms for
+  // Undo normalization and convert to MB/sec for throughput and ms for
   // delay.
-  float throughputMbps =
-      avgThroughput * normBytes() / normMs() * kBytesToMbits * 1000.0;
+  float throughputMBps =
+      avgThroughput * normBytes() / normMs() * kBytesToMB * 1000.0;
   float avgDelayMs = avgDelay * normMs();
   float maxDelayMs = maxDelay * normMs();
   float delayMs = (cfg_.maxDelayInReward ? maxDelayMs : avgDelayMs);
-  float lostMbits = totalLost * normBytes() * kBytesToMbits;
+  float lostMbits = totalLost * normBytes() * kBytesToMB;
 
-  float reward = cfg_.throughputFactor * throughputMbps -
+  float reward = cfg_.throughputFactor * throughputMBps -
                  cfg_.delayFactor * delayMs - cfg_.packetLossFactor * lostMbits;
   VLOG(1) << "Num states = " << states.size()
-          << ", avg throughput = " << throughputMbps
-          << " Mbps, avg delay = " << avgDelayMs
+          << " avg throughput = " << throughputMBps
+          << " MB/sec, avg delay = " << avgDelayMs
           << " ms, max delay = " << maxDelayMs
           << " ms, total Mb lost = " << lostMbits << ", reward = " << reward;
   return reward;
