@@ -34,7 +34,7 @@ def add_args(parser):
         "--job_ids",
         type=str,
         default="",
-        help="Comma separate list of job ids. If set, filter and run only the specified pantheon jobs.",
+        help="Comma separate list of job ids. If set, filter and train only on the specified pantheon jobs.",
     )
     parser.add_argument(
         "--server_address",
@@ -340,7 +340,8 @@ def update_cmd(cmd, flags):
 def main(flags):
     all_jobs = get_pantheon_emulated_jobs(flags)
 
-    if flags.job_ids:
+    # Filter jobs to use for training
+    if flags.job_ids and flags.mode == "train":
         job_ids = [int(job_id) for job_id in flags.job_ids.split(",")]
         jobs = [all_jobs[job_id] for job_id in job_ids]
         logging.info(
