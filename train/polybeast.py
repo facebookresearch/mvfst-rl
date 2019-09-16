@@ -193,8 +193,8 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
 
-        # FC output size + one-hot of last action + last reward.
-        core_output_size = self.fc2.out_features + 1  # + num_actions
+        # FC output size + last reward.
+        core_output_size = self.fc2.out_features + 1
 
         if use_lstm:
             self.core = nn.LSTM(core_output_size, core_output_size, num_layers=1)
