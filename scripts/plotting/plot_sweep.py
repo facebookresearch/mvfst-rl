@@ -78,7 +78,6 @@ def find_args_diff(configs: typing.Dict) -> typing.Set[str]:
         {**{"_path": path}, **config["args"]} for path, config in configs.items()
     ]
     # in reality we would want the symmetric difference of all sets...
-    # TODO make way faster
     lconfigs = [set(c.items()) for c in lconfigs]
     fixed_args = [a[0] for a in set.intersection(*lconfigs)]
     sweep_args = []
@@ -106,8 +105,6 @@ def cluster_runs(
         functools.partial(collections.defaultdict, list)
     )
     for path, config in configs.items():
-        # TODO handle sweep_args == {}
-        # TODO handle sweep_args[k] not in configs['args']
         experiment_id = xp_pivot(config)
         split_key = run_pivot(config)
         new_configs[experiment_id][split_key].append(path)
@@ -241,10 +238,6 @@ def plot_model(
     p_mean = hmap_mean.collapse(function=np.mean)
     p_mean = hv.Curve(p_mean).relabel(model)
     p_mean.opts(opts.Curve("Curve", color=color))
-
-    # p_std = hmap_mean.collapse(function=np.std)
-    # TODO
-    # p_std = hv.Spread(???).relabel('Std')
 
     p = p_runs * p_mean
     # p = p_runs * p_mean * p_std
@@ -400,5 +393,3 @@ plot(
     kdims_facet=kdims_facet,
     subsample=100,
 )
-
-# ## TODO: Auto-refresh
