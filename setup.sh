@@ -57,10 +57,10 @@ function setup_pantheon() {
   # We clone Pantheon into _build/deps instead of using git submodule
   # to avoid circular dependency - pantheon/third_party/ has
   # this project as a submodule. For now, we clone and symlink
-  # pantheon/third_party/mv-rl-fst to $BASE_DIR.
+  # pantheon/third_party/mvfst-rl to $BASE_DIR.
   echo -e "Cloning Pantheon into $PANTHEON_DIR"
-  # TODO (viswanath): Update repo url
-  git clone git@github.com:fairinternal/pantheon.git "$PANTHEON_DIR"
+  # TODO: Update repo url
+  git clone git@github.com:viswanathgs/pantheon.git "$PANTHEON_DIR"
 
   echo -e "Installing Pantheon dependencies"
   cd "$PANTHEON_DIR"
@@ -85,11 +85,11 @@ function setup_pantheon() {
   && ./configure --prefix="$CONDA_PREFIX" \
   && make -j && sudo make install
 
-  # Force-symlink pantheon/third_party/mv-rl-fst to $BASE_DIR
+  # Force-symlink pantheon/third_party/mvfst-rl to $BASE_DIR
   # to avoid double-building
-  echo -e "Symlinking $PANTHEON_DIR/third_party/mv-rl-fst to $BASE_DIR"
-  rm -rf $PANTHEON_DIR/third_party/mv-rl-fst
-  ln -sf "$BASE_DIR" $PANTHEON_DIR/third_party/mv-rl-fst
+  echo -e "Symlinking $PANTHEON_DIR/third_party/mvfst-rl to $BASE_DIR"
+  rm -rf $PANTHEON_DIR/third_party/mvfst-rl
+  ln -sf "$BASE_DIR" $PANTHEON_DIR/third_party/mvfst-rl
   echo -e "Done setting up Pantheon"
 }
 
@@ -100,7 +100,7 @@ function setup_libtorch() {
   fi
 
   # Install CPU-only build of PyTorch libs so that C++ executables of
-  # mv-rl-fst such as traffic_gen don't need to be unnecessarily linked
+  # mvfst-rl such as traffic_gen don't need to be unnecessarily linked
   # with CUDA libs, especially during inference.
   echo -e "Installing libtorch CPU-only build into $LIBTORCH_DIR"
   cd "$DEPS_DIR"
@@ -114,7 +114,7 @@ function setup_libtorch() {
 }
 
 function setup_grpc() {
-  # Manually install grpc. We need this for mv-rl-fst in training mode.
+  # Manually install grpc. We need this for mvfst-rl in training mode.
   # Note that this gets installed within the conda prefix which needs to be
   # exported to cmake.
   echo -e "Installing grpc"
@@ -159,5 +159,5 @@ fi
 setup_libtorch
 setup_mvfst
 
-echo -e "Building mv-rl-fst"
+echo -e "Building mvfst-rl"
 cd "$BASE_DIR" && ./build.sh $BUILD_ARGS

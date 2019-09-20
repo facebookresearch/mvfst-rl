@@ -71,7 +71,7 @@ set -x
 CMAKE_PREFIX_PATH="$FOLLY_INSTALL_DIR;$MVFST_INSTALL_DIR;$CONDA_PREFIX;$LIBTORCH_DIR"
 echo -e "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
 
-echo -e "Building mv-rl-fst"
+echo -e "Building mvfst-rl"
 cd "$CMAKE_BUILD_DIR" || exit
 cmake                                        \
   -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"   \
