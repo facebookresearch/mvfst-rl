@@ -13,8 +13,8 @@ set(TORCHBEAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/torchbeast)
 message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
 message(STATUS "QUIC_ROOT: ${QUIC_ROOT}")
 message(STATUS "TORCHBEAST_ROOT: ${TORCHBEAST_ROOT}")
+message(STATUS "PREFIX_PATH: ${PREFIX_PATH}")
 message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
-message(STATUS "CONDA_PREFIX_PATH: ${CONDA_PREFIX_PATH}")
 message(STATUS "INFERENCE_ONLY: ${INFERENCE_ONLY}")
 
 list(APPEND
@@ -84,13 +84,13 @@ message(STATUS "Found PyTorch libs: ${TORCH_LIBRARIES}")
 include_directories(
   ${PROJECT_ROOT}
   ${CMAKE_REQUIRED_INCLUDES}
-  ${CONDA_PREFIX_PATH}/include
+  ${PREFIX_PATH}/include
   ${TORCHBEAST_ROOT}/libtorchbeast
 )
 
 link_directories(
   ${REQUIRED_LINK_DIRS}
-  ${CONDA_PREFIX_PATH}/lib
+  ${PREFIX_PATH}/lib
 )
 
 link_libraries(

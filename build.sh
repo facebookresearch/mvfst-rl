@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
-CONDA_PREFIX=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+PREFIX=${CONDA_PREFIX:-"/usr/local"}
 
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR"/_build
@@ -68,7 +68,7 @@ set -x
 
 # PYTHON_SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
 
-CMAKE_PREFIX_PATH="$FOLLY_INSTALL_DIR;$MVFST_INSTALL_DIR;$CONDA_PREFIX;$LIBTORCH_DIR"
+CMAKE_PREFIX_PATH="$PREFIX;$FOLLY_INSTALL_DIR;$MVFST_INSTALL_DIR;$LIBTORCH_DIR"
 echo -e "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
 
 echo -e "Building mvfst-rl"
@@ -76,10 +76,10 @@ cd "$CMAKE_BUILD_DIR" || exit
 cmake                                        \
   -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"   \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"      \
-  -DCMAKE_BUILD_TYPE="$BUILD_TYPE"          \
+  -DCMAKE_BUILD_TYPE="$BUILD_TYPE"           \
+  -DPREFIX_PATH="$PREFIX"                    \
   -DBUILD_TESTS=On                           \
   -DINFERENCE_ONLY="$INFERENCE_ONLY"         \
-  -DCONDA_PREFIX_PATH="$CONDA_PREFIX"   \
   ../..
 make -j "$nproc"
 echo -e "Done building."

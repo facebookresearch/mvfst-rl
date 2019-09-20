@@ -29,10 +29,11 @@ BUILD_ARGS=""
 if [ "$INFERENCE" = true ]; then
   echo -e "Inference-only build"
   BUILD_ARGS="--inference"
+else
+  echo -e "Installing for training"
 fi
 
-
-CONDA_PREFIX=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+PREFIX=${CONDA_PREFIX:-"/usr/local"}
 
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR"/_build
@@ -80,14 +81,13 @@ function setup_pantheon() {
 
   # Copy mahimahi binaries to conda env (to be able to run in cluster)
   # with setuid bit.
-  rm -f "$CONDA_PREFIX"/bin/mm-*
-  cp /usr/bin/mm-* "$CONDA_PREFIX"/bin/
-  sudo chown root:root "$CONDA_PREFIX"/bin/mm-*
-  sudo chmod 4755 "$CONDA_PREFIX"/bin/mm-*
+  cp /usr/bin/mm-* "$PREFIX"/bin/
+  sudo chown root:root "$PREFIX"/bin/mm-*
+  sudo chmod 4755 "$PREFIX"/bin/mm-*
 
   # Install pantheon tunnel in the conda env.
   cd third_party/pantheon-tunnel && ./autogen.sh \
-  && ./configure --prefix="$CONDA_PREFIX" \
+  && ./configure --prefix="$PREFIX" \
   && make -j && sudo make install
 
   # Force-symlink pantheon/third_party/mvfst-rl to $BASE_DIR
@@ -143,7 +143,7 @@ function setup_torchbeast() {
   # Install nest
   cd nest/ && CXX=c++ python3 -m pip install . -vv && cd ..
 
-  export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH}
+  export LD_LIBRARY_PATH=${PREFIX}/lib:${LD_LIBRARY_PATH}
   CXX=c++ python3 setup.py install
   echo -e "Done installing TorchBeast"
 }

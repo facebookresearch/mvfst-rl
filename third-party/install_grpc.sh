@@ -2,7 +2,7 @@
 
 ROOT=$(pwd)
 
-PREFIX=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+PREFIX=${CONDA_PREFIX:-"/usr/local"}
 
 NPROCS=$(getconf _NPROCESSORS_ONLN)
 
