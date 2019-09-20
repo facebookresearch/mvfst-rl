@@ -39,6 +39,11 @@ BUILD_DIR="$BASE_DIR"/_build
 DEPS_DIR="$BUILD_DIR"/deps
 mkdir -p "$DEPS_DIR"
 
+if [ -d "$BUILD_DIR/build" ]; then
+  echo -e "mvfst-rl already installed, skipping"
+  exit 0
+fi
+
 PANTHEON_DIR="$DEPS_DIR"/pantheon
 LIBTORCH_DIR="$DEPS_DIR"/libtorch
 THIRDPARTY_DIR="$BASE_DIR"/third-party
