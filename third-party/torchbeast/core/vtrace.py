@@ -1,4 +1,4 @@
-# This file taken from
+# This file is taken from
 #     https://github.com/deepmind/scalable_agent/blob/
 #         cd66d00914d56c8ba2f0615d9cdeefcb169a8d70/vtrace.py
 # and modified.

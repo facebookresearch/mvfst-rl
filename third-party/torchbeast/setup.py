@@ -1,7 +1,13 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
 #
-#   CXX=c++ python3 setup.py build develop
-# or
-#   CXX=c++ pip install . -vv
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+#
+
+# CXX=c++ python3 setup.py build develop
+#   or
+# CXX=c++ pip install . -vv
 #
 # Potentially also set TORCHBEAST_LIBS_PREFIX.
 

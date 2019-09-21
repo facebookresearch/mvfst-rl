@@ -1,4 +1,13 @@
 /*
+* Copyright (c) Facebook, Inc. and its affiliates.
+* All rights reserved.
+*
+* This source code is licensed under the license found in the
+* LICENSE file in the root directory of this source tree.
+*
+*/
+
+/*
 c++ nest_test.cc -lgtest -lgtest_main -std=c++17 -stdlib=libc++
 -mmacosx-version-min=10.14 -o nest_test
  */
