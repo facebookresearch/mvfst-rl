@@ -129,7 +129,7 @@ def add_args(parser):
     parser.add_argument(
         "--reward_clipping",
         default="none",
-        choices=["abs_one", "none"],
+        choices=["abs_one", "soft_asymmetric", "none"],
         help="Reward clipping.",
     )
 
@@ -331,6 +331,12 @@ def learn(
 
         if flags.reward_clipping == "abs_one":
             clipped_rewards = torch.clamp(env_outputs.rewards, -1, 1)
+        elif flags.reward_clipping == "soft_asymmetric":
+            squeezed = torch.tanh(env_outputs.rewards / 5.0)
+            # Negative rewards are given less weight than positive rewards.
+            clipped_rewards = (
+                torch.where(env_outputs.rewards < 0, 0.3 * squeezed, squeezed) * 5.0
+            )
         elif flags.reward_clipping == "none":
             clipped_rewards = env_outputs.rewards
 
