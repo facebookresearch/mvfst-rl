@@ -168,10 +168,10 @@ def compute_baseline_loss(advantages):
 
 
 def compute_entropy_loss(logits):
+    """Return the entropy loss, i.e., the negative entropy of the policy."""
     policy = F.softmax(logits, dim=-1)
     log_policy = F.log_softmax(logits, dim=-1)
-    entropy_per_timestep = torch.sum(-policy * log_policy, dim=-1)
-    return -torch.sum(entropy_per_timestep)
+    return torch.sum(policy * log_policy)
 
 
 def compute_policy_gradient_loss(logits, actions, advantages):
@@ -181,8 +181,7 @@ def compute_policy_gradient_loss(logits, actions, advantages):
         reduction="none",
     )
     cross_entropy = cross_entropy.view_as(advantages)
-    policy_gradient_loss_per_timestep = cross_entropy * advantages.detach()
-    return torch.sum(policy_gradient_loss_per_timestep)
+    return torch.sum(cross_entropy * advantages.detach())
 
 
 class Net(nn.Module):
@@ -316,14 +315,11 @@ def learn(
             dict(frame=frame, reward=reward, done=done), initial_agent_state
         )
 
-        # Use last baseline value (from the value function) to bootstrap.
+        # Take final value function slice for bootstrapping.
         learner_outputs = AgentOutput._make(learner_outputs)
         bootstrap_value = learner_outputs.baseline[-1]
 
-        # At this point, the environment outputs at time step `t` are the inputs
-        # that lead to the learner_outputs at time step `t`. After the following
-        # shifting, the actions in `batch` and `learner_outputs` at time
-        # step `t` is what leads to the environment outputs at time step `t`.
+        # Move from obs[t] -> action[t] to action[t] -> obs[t].
         batch = nest.map(lambda t: t[1:], batch)
         learner_outputs = nest.map(lambda t: t[:-1], learner_outputs)
 
@@ -346,7 +342,6 @@ def learn(
 
         discounts = (1 - env_outputs.done).float() * flags.discounting
 
-        # This could be in C++. In TF, this is actually slower on the GPU.
         vtrace_returns = vtrace.from_logits(
             behavior_policy_logits=actor_outputs.policy_logits,
             target_policy_logits=learner_outputs.policy_logits,
@@ -357,8 +352,6 @@ def learn(
             bootstrap_value=bootstrap_value,
         )
 
-        # Compute loss as a weighted sum of the baseline loss, the policy
-        # gradient loss and an entropy regularization term.
         pg_loss = compute_policy_gradient_loss(
             learner_outputs.policy_logits,
             actor_outputs.action,
