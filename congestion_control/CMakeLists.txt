@@ -17,7 +17,7 @@ add_library(
 if(INFERENCE_ONLY)
   target_compile_definitions(
     rl_congestion_control PUBLIC
-    MVRLFST_INFERENCE_ONLY
+    MVFSTRL_INFERENCE_ONLY
   )
 else()
   # Add one more cpp

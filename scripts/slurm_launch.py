@@ -116,7 +116,7 @@ def get_executor(flags, logdir):
             time=600,
             nodes=1,
             ntasks_per_node=1,
-            job_name="mvrlfst",
+            job_name="mvfstrl",
             num_gpus=2,
             cpus_per_task=80,
             mem="64GB",
@@ -128,7 +128,7 @@ def get_executor(flags, logdir):
             time=120,
             nodes=1,
             ntasks_per_node=1,
-            job_name="mvrlfst",
+            job_name="mvfstrl",
             num_gpus=0,
             cpus_per_task=80,
             mem="64GB",
@@ -145,7 +145,7 @@ def launch_train(flags):
 
     for i, train_args in enumerate(sweep_grid):
         uid = "{}-{}".format(now, train_args["xpid"])
-        logdir = "/checkpoint/{}/mvrlfst/{}".format(os.environ["USER"], uid)
+        logdir = "/checkpoint/{}/mvfstrl/{}".format(os.environ["USER"], uid)
         os.makedirs(logdir, exist_ok=True)
 
         train_args.update(

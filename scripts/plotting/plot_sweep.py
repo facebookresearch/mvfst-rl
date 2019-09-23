@@ -162,7 +162,7 @@ def load_experiments(
     paths: typing.List[str],
     config_filter: typing.Callable = lambda _: True,
     xp_pivot: typing.Callable = None,
-    run_pivot: typing.Callable = lambda _: "mvrlfst",
+    run_pivot: typing.Callable = lambda _: "mvfstrl",
 ) -> Metrics:
     """Retrieves and clusters experiment data.
 
@@ -349,7 +349,7 @@ def augment(data, results, x="step", y="mean_episode_return"):
 
 # +
 def get_paths(pattern):
-    logdirs = glob.glob("/checkpoint/viswanath/mvrlfst/{}".format(pattern))
+    logdirs = glob.glob("/checkpoint/viswanath/mvfstrl/{}".format(pattern))
     all_paths = [os.path.join(logdir, "train/torchbeast/latest") for logdir in logdirs]
 
     paths = []

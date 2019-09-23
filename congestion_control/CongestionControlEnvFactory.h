@@ -11,7 +11,7 @@
 #include "CongestionControlLocalEnv.h"
 #include "CongestionControlRandomEnv.h"
 
-#ifndef MVRLFST_INFERENCE_ONLY
+#ifndef MVFSTRL_INFERENCE_ONLY
 #include "CongestionControlRPCEnv.h"
 #endif
 
@@ -29,7 +29,7 @@ class CongestionControlEnvFactory {
       case CongestionControlEnv::Config::Mode::LOCAL:
         return std::make_unique<CongestionControlLocalEnv>(cfg_, cob, conn);
       case CongestionControlEnv::Config::Mode::REMOTE:
-#ifdef MVRLFST_INFERENCE_ONLY
+#ifdef MVFSTRL_INFERENCE_ONLY
         LOG(FATAL) << "REMOTE mode is not available as this is an inference "
                       "only build.";
         return nullptr;
