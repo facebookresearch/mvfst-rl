@@ -1,5 +1,3 @@
-<p align="center"><img src="http://play.pokemonshowdown.com/sprites/xyani/charizard.gif" /></p>
-
 # torchbeast
 A PyTorch implementation of [IMPALA: Scalable Distributed
 Deep-RL with Importance Weighted Actor-Learner Architectures
