@@ -105,7 +105,7 @@ def add_args(parser):
     parser.add_argument(
         "--cc_env_history_size",
         type=int,
-        default=2,
+        default=20,
         help="Length of history (such as past actions) to include in observation",
     )
     parser.add_argument(
@@ -129,13 +129,13 @@ def add_args(parser):
     parser.add_argument(
         "--cc_env_reward_throughput_factor",
         type=float,
-        default=0.1,
+        default=1.0,
         help="Throughput multiplier in reward",
     )
     parser.add_argument(
         "--cc_env_reward_delay_factor",
         type=float,
-        default=0.01,
+        default=0.2,
         help="Delay multiplier in reward",
     )
     parser.add_argument(
