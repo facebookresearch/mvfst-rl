@@ -7,8 +7,10 @@
 ### Asynchronous RL Agent
 ![alt text](figures/rl_agent.png "RL Agent")
 
+
 ### Training Architecture
 ![alt text](figures/training_architecture.png "Training Architecture")
+
 
 For more details, please refer to the following paper: TODO
 
