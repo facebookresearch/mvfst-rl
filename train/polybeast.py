@@ -51,7 +51,7 @@ def add_args(parser):
     parser.add_argument(
         "--observation_length",
         type=int,
-        default=112,
+        default=220,
         help="Length of the observation vector to be fed into the model.",
     )
     parser.add_argument(
@@ -79,7 +79,7 @@ def add_args(parser):
     )
     parser.add_argument(
         "--total_steps",
-        default=100000,
+        default=1000000,
         type=int,
         metavar="T",
         help="Total environment steps to train for",
@@ -112,13 +112,13 @@ def add_args(parser):
     parser.add_argument(
         "--use_lstm",
         type=utils.str2bool,
-        default="false",
+        default="true",
         help="Use LSTM in agent model.",
     )
 
     # Loss settings.
     parser.add_argument(
-        "--entropy_cost", default=0.0006, type=float, help="Entropy cost/multiplier."
+        "--entropy_cost", default=0.01, type=float, help="Entropy cost/multiplier."
     )
     parser.add_argument(
         "--baseline_cost", default=0.5, type=float, help="Baseline cost/multiplier."
@@ -136,7 +136,7 @@ def add_args(parser):
     # Optimizer settings.
     parser.add_argument(
         "--learning_rate",
-        default=0.00048,
+        default=0.00001,
         type=float,
         metavar="LR",
         help="Learning rate.",
