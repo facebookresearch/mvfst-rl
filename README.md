@@ -4,13 +4,19 @@
 2. [torchbeast](https://github.com/facebookresearch/torchbeast), a PyTorch implementation of asynchronous distributed deeep RL.
 3. [Pantheon](https://github.com/StanfordSNR/pantheon), a set of calibrated network emulators.
 
+### Asynchronous RL Agent
+![alt text](figures/rl_agent.png "RL Agent")
+
+### Training Architecture
+![alt text](figures/torchbeast_architecture.png "Training Architecture")
+
 For more details, please refer to the following paper: TODO
 
 ## Building mvfst-rl
 
 ### Ubuntu 16+
 
-`Pantheon` requires Python 2 while `mvfst-rl` training requires Python 3.7+. The recommended setup is to explicitly use python2/python3 commands.
+Pantheon requires Python 2 while `mvfst-rl` training requires Python 3.7+. The recommended setup is to explicitly use python2/python3 commands.
 
 For building with training support, it's recommended to have a conda environment first:
 ```
@@ -35,7 +41,7 @@ python3 -m train.train \
   --cc_env_history_size=20
 ```
 
-The above starts 40 `Pantheon` instances in parallel that communicate with the `torchbeast` actors via RPC. To see the full list of training parameters, run `python3 -m train.train --help`.
+The above starts 40 Pantheon instances in parallel that communicate with the torchbeast actors via RPC. To see the full list of training parameters, run `python3 -m train.train --help`.
 
 ## Evaluation
 
@@ -47,7 +53,7 @@ python3 -m train.train \
   --cc_env_history_size=20
 ```
 
-For exporting a model via TorchScript, run the above command with `--mode=trace`. This outputs a traced model file at the location pointed to by `--traced_model`.
+To export a trained model via TorchScript, run the above command with `--mode=trace`. This outputs a traced model file at the location pointed to by `--traced_model`.
 
 With a traced model, local inference in C++ without RPC can be run as follows:
 ```
