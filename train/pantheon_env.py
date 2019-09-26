@@ -289,11 +289,11 @@ def update_cmd(cmd, flags):
         schemes = " ".join(
             [
                 "mvfst_rl",
-                "mvfst_copa",
-                "mvfst_random",
-                "mvfst_cubic",
-                "mvfst_newreno",
-                "mvfst_bbr",
+                # "mvfst_copa",
+                # "mvfst_random",
+                # "mvfst_cubic",
+                # "mvfst_newreno",
+                # "mvfst_bbr",
                 "bbr",
                 "copa",
                 "cubic",

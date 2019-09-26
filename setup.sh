@@ -54,6 +54,7 @@ fi
 
 PANTHEON_DIR="$DEPS_DIR"/pantheon
 LIBTORCH_DIR="$DEPS_DIR"/libtorch
+PYTORCH_DIR="$DEPS_DIR"/pytorch
 THIRDPARTY_DIR="$BASE_DIR"/third-party
 TORCHBEAST_DIR="$THIRDPARTY_DIR"/torchbeast
 MVFST_DIR="$THIRDPARTY_DIR"/mvfst
@@ -135,16 +136,31 @@ function setup_grpc() {
   echo -e "Done installing grpc"
 }
 
-function setup_torchbeast() {
-  echo -e "Installing TorchBeast"
-  cd "$TORCHBEAST_DIR"
+function setup_pytorch() {
+  if [ -d "$PYTORCH_DIR" ]; then
+    echo -e "$PYTORCH_DIR already exists, skipping."
+    return
+  fi
 
   # TorchBeast requires PyTorch with CUDA. This doesn't conflict the CPU-only
   # libtorch installation as the install locations are different.
-  # TODO (viswanath): Update path
   echo -e "Installing PyTorch with CUDA for TorchBeast"
-  python3 -m pip install /private/home/thibautlav/wheels/torch-1.1.0-cp37-cp37m-linux_x86_64.whl
+  conda install -y numpy ninja pyyaml mkl mkl-include setuptools cmake cffi typing
+  conda install -y -c pytorch magma-cuda92
 
+  echo -e "Cloning PyTorch into $PYTORCH_DIR"
+  git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
+  cd "$PYTORCH_DIR"
+  git checkout v1.2.0
+
+  export CMAKE_PREFIX_PATH=${PREFIX}
+  python3 setup.py install
+  echo -e "Done installing PyTorch"
+}
+
+function setup_torchbeast() {
+  echo -e "Installing TorchBeast"
+  cd "$TORCHBEAST_DIR"
   python3 -m pip install -r requirements.txt
 
   # Install nest
@@ -166,6 +182,7 @@ function setup_mvfst() {
 if [ "$INFERENCE" = false ]; then
     setup_pantheon
     setup_grpc
+    setup_pytorch
     setup_torchbeast
 fi
 setup_libtorch

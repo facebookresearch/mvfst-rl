@@ -36,7 +36,7 @@ Training can be run as follows:
 ```
 python3 -m train.train \
   --mode=train \
-  --checkpoint=checkpoint.tar \
+  --base_logdir=/tmp/logs \
   --total_steps=1000000 \
   --learning_rate=0.00001 \
   --num_actors=40 \
@@ -51,19 +51,13 @@ For running test via RPC for policy lookup, use `--mode=test` as follows:
 ```
 python3 -m train.train \
   --mode=test \
-  --checkpoint=checkpoint.tar \
+  --base_logdir=/tmp/logs \
   --cc_env_history_size=20
 ```
 
-To export a trained model via TorchScript, run the above command with `--mode=trace`. This outputs a traced model file at the location pointed to by `--traced_model`.
+The above takes the `checkpoint.tar` file in `/tmp/logs` and tests the RL agent on all emulated Panthoen environments.
 
-With a traced model, local inference in C++ without RPC can be run as follows:
-```
-python3 -m train.train \
-  --mode=test_local \
-  --checkpoint=traced_model.pt \
-  --cc_env_history_size=20
-```
+To export a trained model via TorchScript, run the above command with `--mode=trace`. This outputs a traced model file within `--base_logdir`. Testing with local inference in C++ (without RPC) can then be run with `--mode=test_local`.
 
 ## Contributing
 We would love to have you contribute to `mvfst-rl` or use it for your research. See the [CONTRIBUTING](CONTRIBUTING.md) file for how to help out.
