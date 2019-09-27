@@ -31,7 +31,7 @@ ARG SCHEMENAME
 
 RUN src/experiments/setup.py --install-deps --schemes $SCHEMENAME
 
-RUN sudo -u runner -H src/experiments/setup.py --setup --schemes $SCHEMENAME
+RUN src/experiments/setup.py --setup --schemes $SCHEMENAME
 
 RUN echo 'mkdir -p /dev/net && mknod /dev/net/tun c 10 200'   > prelim.sh && \
     echo 'mount -o remount rw /proc/sys'                     >> prelim.sh && \
