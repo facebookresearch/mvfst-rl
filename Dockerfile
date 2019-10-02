@@ -1,3 +1,26 @@
+## Demonstration of running an experiment using the model inside the Pantheon environment.
+
+# This Dockerfile can be used to run any of the schemes Pantheon has available
+# by specifying the SCHEMENAME argument, inside a Docker container with high
+# priviledges. We are using it do demonstrate mvfst_rl.
+
+# 1) If using Docker Desktop on a Mac, it is a good idea to increase its memory limits
+# because the default 2Gb is too small to build mvfst.
+
+# 2) Build the docker image using
+#     docker build --tag mvfst_rl --build-arg SCHEMENAME=mvfst_rl - < Dockerfile
+# where Dockerfile is this file.
+
+# 3) Run the image using
+#     CAPS='--cap-add=NET_ADMIN --cap-add=SYS_ADMIN'
+#     sudo docker run --name c_mvfst_rl ${CAPS:?} --rm -t -i mvfst_rl
+# 
+# Inside the container, you can run any of the mvfst schemes because they all depend
+# on the same setup. For example you can type
+#     sudo -u runner -H src/experiments/test.py local --schemes mvfst_bbr --flows 1
+# for the bbr scheme. The mvfst_rl scheme (running the trained model) can also be run with
+#     . 1
+
 FROM ubuntu:18.04
 
 RUN echo Europe/London > /etc/timezone && \
