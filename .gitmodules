@@ -3,4 +3,4 @@
 	url = https://github.com/facebookincubator/mvfst
 [submodule "third-party/grpc"]
 	path = third-party/grpc
-	url = git@github.com:grpc/grpc.git
+	url = https://github.com/grpc/grpc
