@@ -12,7 +12,7 @@
 ![alt text](figures/training_architecture.png "Training Architecture")
 
 
-For more details, please refer to the following paper: TODO
+For more details, please refer to our [paper](https://arxiv.org/abs/1910.03552).
 
 ## Building mvfst-rl
 
