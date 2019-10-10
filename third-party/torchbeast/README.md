@@ -1,7 +1,7 @@
 # torchbeast
 A PyTorch implementation of [IMPALA: Scalable Distributed
 Deep-RL with Importance Weighted Actor-Learner Architectures
-by Espeholt, Soyer, Munos et al.](https://arxiv.org/abs/1802.01561)
+by Espeholt, Soyer, Munos et al.](https://arxiv.org/abs/1802.01561). More details in [TorchBeast paper](https://arxiv.org/abs/1910.03552).
 
 Stripped down and modified from https://github.com/facebookresearch/torchbeast.
 The primary differences from torchbeast master are:
