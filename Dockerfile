@@ -2,10 +2,12 @@
 
 # This Dockerfile can be used to run any of the schemes Pantheon has available
 # by specifying the SCHEMENAME argument, inside a Docker container with high
-# priviledges. We are using it do demonstrate mvfst_rl.
+# privileges. We are using it to demonstrate using a trained mvfst_rl model.
+
+# In particular, this container is not used for training the model.
 
 # 1) If using Docker Desktop on a Mac, it is a good idea to increase its memory limits
-# because the default 2Gb is too small to build mvfst.
+# because the default 2GB is too small to build mvfst.
 
 # 2) Build the docker image using
 #     docker build --tag mvfst_rl --build-arg SCHEMENAME=mvfst_rl - < Dockerfile
