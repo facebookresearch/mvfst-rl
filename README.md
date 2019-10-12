@@ -64,3 +64,15 @@ We would love to have you contribute to `mvfst-rl` or use it for your research. 
 
 ## License
 mvfst-rl is licensed under the CC-BY-NC 4.0 license, as found in the LICENSE file.
+
+## BibTeX
+@article{mvfstrl2019,
+  title={MVFST-RL: An Asynchronous RL Framework for Congestion Control with Delayed Actions},
+  author={Viswanath Sivakumar and Tim Rockt\"{a}schel and Alexander H. Miller and Heinrich K\"{u}ttler and Nantas Nardelli and Mike Rabbat and Joelle Pineau and Sebastian Riedel},
+  year={2019},
+  eprint={1910.04054},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/1910.04054},
+  journal={NeurIPS Workshop on Machine Learning for Systems},
+}
