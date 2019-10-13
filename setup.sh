@@ -33,9 +33,11 @@ done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
 BUILD_ARGS=""
+MVFST_ARGS=""
 if [ "$INFERENCE" = true ]; then
   echo -e "Inference-only build"
   BUILD_ARGS="--inference"
+  MVFST_ARGS="-s"
 else
   echo -e "Installing for training"
 fi
@@ -118,7 +120,7 @@ function setup_libtorch() {
   echo -e "Installing libtorch CPU-only build into $LIBTORCH_DIR"
   cd "$DEPS_DIR"
 
-  wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
+  wget --no-verbose https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
 
   # This creates and populates $LIBTORCH_DIR
   unzip libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
@@ -174,7 +176,7 @@ function setup_torchbeast() {
 function setup_mvfst() {
   # Build and install mvfst
   echo -e "Installing mvfst"
-  cd "$MVFST_DIR" && ./build_helper.sh
+  cd "$MVFST_DIR" && ./build_helper.sh "$MVFST_ARGS"
   cd _build/build/ && make install
   echo -e "Done installing mvfst"
 }
