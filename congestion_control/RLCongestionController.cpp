@@ -10,6 +10,7 @@
 #include <quic/congestion_control/CongestionControlFunctions.h>
 #include <quic/congestion_control/Copa.h>
 
+
 #include "NetworkState.h"
 #include "RLCongestionController.h"
 
@@ -46,10 +47,7 @@ void RLCongestionController::onPacketSent(const OutstandingPacket& packet) {
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
            << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_
            << " bytesBufferred=" << conn_.flowControlState.sumCurStreamBufferLen
-           << " packetNum="
-           << folly::variant_match(
-                  packet.packet.header,
-                  [](auto& h) { return h.getPacketSequenceNum(); })
+           << " packetNum=" << packet.packet.header.getPacketSequenceNum()
            << " " << conn_;
 }
 
