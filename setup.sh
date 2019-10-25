@@ -151,9 +151,8 @@ function setup_pytorch() {
   conda install -y -c pytorch magma-cuda92
 
   echo -e "Cloning PyTorch into $PYTORCH_DIR"
-  git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
+  git clone -b v1.2.0 --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
   cd "$PYTORCH_DIR"
-  git checkout v1.2.0
 
   export CMAKE_PREFIX_PATH=${PREFIX}
   python3 setup.py install
