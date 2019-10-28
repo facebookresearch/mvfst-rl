@@ -10,7 +10,6 @@
 #include <quic/congestion_control/CongestionControlFunctions.h>
 #include <quic/congestion_control/Copa.h>
 
-
 #include "NetworkState.h"
 #include "RLCongestionController.h"
 
