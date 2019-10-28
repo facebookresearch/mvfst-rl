@@ -137,8 +137,19 @@ std::vector<NetworkState> CongestionControlEnv::stateSummary(
   return summaryStates;
 }
 
+static void relativeValue(float& current, float& last){
+  float absolute = current;
+  if (last > 0) {
+    current /= last;
+  }
+  else{
+    current = 0;
+  }
+  last = absolute;
+}
+
 float CongestionControlEnv::computeReward(
-    const std::vector<NetworkState>& states) const {
+    const std::vector<NetworkState>& states) {
   // Reward function is a combinaton of throughput, delay and lost bytes.
   // For throughput and delay, it makes sense to take the average, whereas
   // for loss, we compute the total bytes lost over these states.
@@ -164,8 +175,24 @@ float CongestionControlEnv::computeReward(
   float delayMs = (cfg_.maxDelayInReward ? maxDelayMs : avgDelayMs);
   float lostMbits = totalLost * normBytes() * kBytesToMB;
 
+
+  if (cfg_.relativeReward == Config::RelativeRewardMethod::SEPARATE) {
+    relativeValue(delayMs, lastDelay_);
+    relativeValue(lostMbits, lastPacketLoss_);
+    relativeValue(throughputMBps, lastThroughput_);
+    VLOG(1) << "Absolute avg throughput = " << throughputMBps
+            << " MB/sec, avg delay = " << avgDelayMs
+            << " ms, total Mb lost = " << lostMbits;
+
+  }
+
   float reward = cfg_.throughputFactor * throughputMBps -
                  cfg_.delayFactor * delayMs - cfg_.packetLossFactor * lostMbits;
+
+  if (cfg_.relativeReward == Config::RelativeRewardMethod::UNIFIED) {
+    relativeValue(reward, lastReward_);
+  }
+
   VLOG(1) << "Num states = " << states.size()
           << " avg throughput = " << throughputMBps
           << " MB/sec, avg delay = " << avgDelayMs

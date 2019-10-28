@@ -56,6 +56,8 @@ DEFINE_double(cc_env_reward_throughput_factor, 0.1,
 DEFINE_double(cc_env_reward_delay_factor, 0.01, "Delay multiplier in reward");
 DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
               "Packet loss multiplier in reward");
+DEFINE_string(cc_env_relative_reward, "none",
+	      "Whether and how to make relative reward [none | unified | separate]");
 DEFINE_bool(cc_env_reward_max_delay, true,
             "Whether to take max delay over observations in reward."
             "Otherwise, avg delay is used.");
@@ -102,6 +104,16 @@ makeRLCongestionControllerFactory() {
   cfg.delayFactor = FLAGS_cc_env_reward_delay_factor;
   cfg.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
   cfg.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
+
+  if (FLAGS_cc_env_relative_reward == "none") {
+    cfg.relativeReward = Config::RelativeRewardMethod::NONE;
+  } else if (FLAGS_cc_env_relative_reward == "unified") {
+    cfg.relativeReward = Config::RelativeRewardMethod::UNIFIED;
+  } else if (FLAGS_cc_env_relative_reward == "separate") {
+    cfg.relativeReward = Config::RelativeRewardMethod::SEPARATE;
+  } else {
+    LOG(FATAL) << "Unknown cc_env_relative_reward: " << FLAGS_cc_env_relative_reward;
+  }
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(cfg);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);

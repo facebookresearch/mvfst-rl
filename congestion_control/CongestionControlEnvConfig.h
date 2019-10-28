@@ -37,6 +37,12 @@ struct CongestionControlEnvConfig {
     DIV,
   };
 
+  enum class RelativeRewardMethod : uint8_t {
+    NONE = 0,
+    UNIFIED,
+    SEPARATE,
+  };
+
   /// Members
 
   Mode mode{Mode::LOCAL};
@@ -73,6 +79,9 @@ struct CongestionControlEnvConfig {
 
   // Whether to use max delay within a window in reward (avg otherwise)
   bool maxDelayInReward{true};
+
+  // Whether to look at relative delay and throughput in reward
+  RelativeRewardMethod relativeReward{RelativeRewardMethod::NONE};
 
   /// Helper functions
 
