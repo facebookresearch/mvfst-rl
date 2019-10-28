@@ -9,7 +9,7 @@
 
 set -eu
 
-## Usage: ./setup.sh [--inference]
+## Usage: ./setup.sh [--inference] [--skip-mvfst-deps]
 
 # Note: Pantheon requires python 2.7 while torchbeast needs python3.7.
 # Make sure your default python in conda env in python2.7 with an explicit
@@ -17,6 +17,7 @@ set -eu
 
 # ArgumentParser
 INFERENCE=false
+SKIP_MVFST_DEPS=false
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -24,6 +25,10 @@ while [[ $# -gt 0 ]]; do
     --inference )
       # If --inference is specified, only get what we need to run inference
       INFERENCE=true
+      shift;;
+    --skip-mvfst-deps )
+      # If --skip-mvfst-deps is specified, don't get mvfst's dependencies.
+      SKIP_MVFST_DEPS=true
       shift;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
@@ -37,9 +42,12 @@ MVFST_ARGS=""
 if [ "$INFERENCE" = true ]; then
   echo -e "Inference-only build"
   BUILD_ARGS="--inference"
-  MVFST_ARGS="-s"
 else
   echo -e "Installing for training"
+fi
+if [ "$SKIP_MVFST_DEPS" = true ]; then
+  echo -e "Skipping dependencies of mvfst"
+  MVFST_ARGS="-s"
 fi
 
 PREFIX=${CONDA_PREFIX:-"/usr/local"}
