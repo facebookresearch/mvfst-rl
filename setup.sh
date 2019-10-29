@@ -9,7 +9,7 @@
 
 set -eu
 
-## Usage: ./setup.sh [--inference]
+## Usage: ./setup.sh [--inference] [--skip-mvfst-deps]
 
 # Note: Pantheon requires python 2.7 while torchbeast needs python3.7.
 # Make sure your default python in conda env in python2.7 with an explicit
@@ -17,6 +17,7 @@ set -eu
 
 # ArgumentParser
 INFERENCE=false
+SKIP_MVFST_DEPS=false
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -24,6 +25,10 @@ while [[ $# -gt 0 ]]; do
     --inference )
       # If --inference is specified, only get what we need to run inference
       INFERENCE=true
+      shift;;
+    --skip-mvfst-deps )
+      # If --skip-mvfst-deps is specified, don't get mvfst's dependencies.
+      SKIP_MVFST_DEPS=true
       shift;;
     * )    # Unknown option
       POSITIONAL+=("$1") # Save it in an array for later
@@ -33,11 +38,16 @@ done
 set -- "${POSITIONAL[@]}" # Restore positional parameters
 
 BUILD_ARGS=""
+MVFST_ARGS=""
 if [ "$INFERENCE" = true ]; then
   echo -e "Inference-only build"
   BUILD_ARGS="--inference"
 else
   echo -e "Installing for training"
+fi
+if [ "$SKIP_MVFST_DEPS" = true ]; then
+  echo -e "Skipping dependencies of mvfst"
+  MVFST_ARGS="-s"
 fi
 
 PREFIX=${CONDA_PREFIX:-"/usr/local"}
@@ -118,7 +128,7 @@ function setup_libtorch() {
   echo -e "Installing libtorch CPU-only build into $LIBTORCH_DIR"
   cd "$DEPS_DIR"
 
-  wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
+  wget --no-verbose https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
 
   # This creates and populates $LIBTORCH_DIR
   unzip libtorch-cxx11-abi-shared-with-deps-1.2.0.zip
@@ -149,9 +159,8 @@ function setup_pytorch() {
   conda install -y -c pytorch magma-cuda92
 
   echo -e "Cloning PyTorch into $PYTORCH_DIR"
-  git clone --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
+  git clone -b v1.2.0 --recursive https://github.com/pytorch/pytorch "$PYTORCH_DIR"
   cd "$PYTORCH_DIR"
-  git checkout v1.2.0
 
   export CMAKE_PREFIX_PATH=${PREFIX}
   python3 setup.py install
@@ -174,7 +183,7 @@ function setup_torchbeast() {
 function setup_mvfst() {
   # Build and install mvfst
   echo -e "Installing mvfst"
-  cd "$MVFST_DIR" && ./build_helper.sh
+  cd "$MVFST_DIR" && ./build_helper.sh "$MVFST_ARGS"
   cd _build/build/ && make install
   echo -e "Done installing mvfst"
 }

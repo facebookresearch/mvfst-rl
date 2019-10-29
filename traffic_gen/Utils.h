@@ -12,7 +12,7 @@
 #include <fizz/protocol/CertificateVerifier.h>
 #include <fizz/protocol/clock/test/Mocks.h>
 #include <fizz/server/FizzServerContext.h>
-#include <quic/handshake/QuicFizzFactory.h>
+#include <quic/handshake/FizzCryptoFactory.h>
 
 namespace quic {
 namespace traffic_gen {
@@ -46,7 +46,7 @@ std::shared_ptr<fizz::server::FizzServerContext> createTestServerCtx() {
   auto certManager = std::make_unique<fizz::server::CertManager>();
   certManager->addCert(std::move(cert), true);
   auto serverCtx = std::make_shared<fizz::server::FizzServerContext>();
-  serverCtx->setFactory(std::make_shared<QuicFizzFactory>());
+  serverCtx->setFactory(std::make_shared<FizzCryptoFactory>());
   serverCtx->setCertManager(std::move(certManager));
   serverCtx->setOmitEarlyRecordLayer(true);
   serverCtx->setClock(std::make_shared<fizz::test::MockClock>());
