@@ -133,6 +133,13 @@ def add_args(parser):
         help="Throughput multiplier in reward",
     )
     parser.add_argument(
+        "--cc_env_relative_reward",
+        type=str,
+        default="none",
+        choices=["none", "separate", "unified"],
+        help="How/whether to use a relative reward",
+    )
+    parser.add_argument(
         "--cc_env_reward_delay_factor",
         type=float,
         default=0.2,
@@ -326,6 +333,7 @@ def update_cmd(cmd, flags):
             "--cc_env_norm_ms={}".format(flags.cc_env_norm_ms),
             "--cc_env_norm_bytes={}".format(flags.cc_env_norm_bytes),
             "--cc_env_actions={}".format(flags.cc_env_actions),
+            "--cc_env_relative_reward={}".format(flags.cc_env_relative_reward),
             "--cc_env_reward_throughput_factor={}".format(
                 flags.cc_env_reward_throughput_factor
             ),
