@@ -1,7 +1,7 @@
 # mvfst-rl
 `mvfst-rl` is a framework for network congestion control in the QUIC transport protocol that leverages state-of-the-art in asynchronous Reinforcement Learning training with off-policy correction. It's built upon the following components:
 1. [mvfst](https://github.com/facebookincubator/mvfst), an implementation of the IETF QUIC transport protocol.
-2. [torchbeast](https://github.com/facebookresearch/torchbeast), a PyTorch implementation of asynchronous distributed deeep RL.
+2. [torchbeast](https://github.com/facebookresearch/torchbeast), a PyTorch implementation of asynchronous distributed deep RL.
 3. [Pantheon](https://github.com/StanfordSNR/pantheon), a set of calibrated network emulators.
 
 ### Asynchronous RL Agent
