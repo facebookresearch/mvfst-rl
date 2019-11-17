@@ -150,7 +150,7 @@ def run_remote(flags, train=True):
         )
         init_logdirs(flags)
 
-        # Unix domain socket path for RL server address
+        # Unix domain socket path for RL server address, one per GALA agent.
         address = "/tmp/rl_server_path_{}".format(rank)
         try:
             os.remove(address)
@@ -160,10 +160,7 @@ def run_remote(flags, train=True):
         flags.server_address = flags.address
 
         # Round-robin device assignment
-        if cuda:
-            device = "cuda:{}".format(rank % torch.cuda.device_count())
-        else:
-            device = "cpu"
+        device = "cuda:{}".format(rank % torch.cuda.device_count()) if cuda else "cpu"
 
         logging.info(
             "Starting agent {} on device {}. Mode={}, logdir={}".format(
