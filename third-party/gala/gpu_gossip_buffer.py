@@ -15,12 +15,22 @@ Gossip Buffer
 
 import copy
 import torch
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
-class GossipBuffer():
-
-    def __init__(self, topology, model, buffer_locks, read_events,
-                 write_events, sync_list, sync_freq=0):
+class GossipBuffer:
+    def __init__(
+        self,
+        topology,
+        model,
+        buffer_locks,
+        read_events,
+        write_events,
+        sync_list,
+        sync_freq=0,
+    ):
         """ GossipBuffer """
 
         self.topology = topology
@@ -92,8 +102,7 @@ class GossipBuffer():
             # -- flatten params and multiply by mixing-weight
             num_peers = self.topology[rank].peers_per_itr
             with lock:
-                for bp, p in zip(broadcast_buffer.parameters(),
-                                 model.parameters()):
+                for bp, p in zip(broadcast_buffer.parameters(), model.parameters()):
                     bp.data.copy_(p)
                     bp.data.div_(num_peers + 1)
                 # -- mark message as 'written'
@@ -137,7 +146,9 @@ class GossipBuffer():
             # Not done writing, but staleness is still tolerable
             else:
                 self.sync_list[rank] += 1
-                print('%s: staleness %s' % (rank, self.sync_list[rank]))
+                logging.info(
+                    "GALA agent %s: staleness %s" % (rank, self.sync_list[rank])
+                )
                 return
 
             # Lazy-mixing of local params
@@ -152,8 +163,7 @@ class GossipBuffer():
                 with lock:
                     # Read message and update 'params'
                     peer_msg = peer_buffer[0]
-                    for p, bp in zip(model.parameters(),
-                                     peer_msg.parameters()):
+                    for p, bp in zip(model.parameters(), peer_msg.parameters()):
                         p.data.add_(bp.to(p.device, non_blocking=True))
                     torch.cuda.current_stream().synchronize()
                     # Mark message as 'read'
