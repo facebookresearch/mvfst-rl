@@ -116,6 +116,23 @@ def add_args(parser):
         help="Use LSTM in agent model.",
     )
 
+    # GALA settings.
+    parser.add_argument(
+        "--num_gala_agents", default=1, type=int, help="If > 1, GALA mode is enabled."
+    )
+    parser.add_argument(
+        "--num_gala_peers",
+        type=int,
+        default=1,
+        help="Number of peers to communicate with in each iteration.",
+    )
+    parser.add_argument(
+        "--sync_freq",
+        type=int,
+        default=0,
+        help="Max amount of message staleness for local gossip.",
+    )
+
     # Loss settings.
     parser.add_argument(
         "--entropy_cost", default=0.01, type=float, help="Entropy cost/multiplier."
@@ -301,6 +318,8 @@ def learn(
     stats,
     flags,
     plogger,
+    rank=0,  # Rank of GALA agent
+    gossip_buffer=None,  # Shared buffer for GALA gossip
     lock=threading.Lock(),  # noqa: B008
 ):
     for tensors in learner_queue:
@@ -372,6 +391,11 @@ def learn(
         nn.utils.clip_grad_norm_(model.parameters(), 40.0)
         optimizer.step()
 
+        # Local-Gossip in GALA mode
+        if gossip_buffer is not None:
+            gossip_buffer.write_message(rank, model)
+            gossip_buffer.aggregate_message(rank, model)
+
         actor_model.load_state_dict(model.state_dict())
 
         episode_returns = env_outputs.episode_return[env_outputs.done]
@@ -395,7 +419,7 @@ def learn(
         lock.release()
 
 
-def train(flags):
+def train(flags, rank=0, barrier=None, device="cuda:0", gossip_buffer=None):
     if flags.xpid is None:
         flags.xpid = "torchbeast-%s" % time.strftime("%Y%m%d-%H%M%S")
     plogger = file_writer.FileWriter(
@@ -404,8 +428,8 @@ def train(flags):
 
     if not flags.disable_cuda and torch.cuda.is_available():
         logging.info("Using CUDA.")
-        flags.learner_device = torch.device("cuda:0")
-        flags.actor_device = torch.device("cuda:1")
+        flags.learner_device = torch.device(device)
+        flags.actor_device = torch.device(device)
     else:
         logging.info("Not using CUDA.")
         flags.learner_device = torch.device("cpu")
@@ -502,6 +526,8 @@ def train(flags):
                 stats,
                 flags,
                 plogger,
+                rank,
+                gossip_buffer,
             ),
         )
         for i in range(flags.num_learner_threads)
@@ -514,6 +540,11 @@ def train(flags):
         )
         for i in range(flags.num_inference_threads)
     ]
+
+    # Synchronize GALA agents before starting training
+    if barrier is not None:
+        barrier.wait()
+        logging.info("%s: barrier passed" % rank)
 
     actorpool_thread.start()
     for t in learner_threads + inference_threads:
@@ -582,7 +613,7 @@ def train(flags):
     trace_model(flags, model)
 
 
-def trace(flags):
+def trace(flags, **kwargs):
     model = Net(
         observation_shape=flags.observation_shape,
         hidden_size=flags.hidden_size,
@@ -629,7 +660,7 @@ def trace_model(flags, model):
         pickle.dump(vars(flags), f, 2)
 
 
-def test(flags):
+def test(flags, **kwargs):
     if not flags.disable_cuda and torch.cuda.is_available():
         logging.info("Using CUDA for testing.")
         flags.actor_device = torch.device("cuda:0")
@@ -707,12 +738,22 @@ def test(flags):
         t.join()
 
 
-def main(flags):
+def main(flags, rank=0, barrier=None, device="cuda:0", gossip_buffer=None):
     # We disable batching in learner as unroll lengths could different across
     # actors due to partial rollouts created by env resets.
     assert flags.batch_size == 1, "Batching in learner not supported currently"
 
+    if flags.mode == "train" and flags.num_gala_agents > 1:
+        # In GALA mode. Force single learner thread per GALA agent.
+        flags.num_learner_threads = 1
+
     flags.observation_shape = (1, 1, flags.observation_length)
+    kwargs = {
+        "rank": rank,
+        "barrier": barrier,
+        "device": device,
+        "gossip_buffer": gossip_buffer,
+    }
 
     def error_fn(flags):
         raise RuntimeError("Unsupported mode {}".format(flags.mode))
@@ -723,13 +764,13 @@ def main(flags):
     if flags.write_profiler_trace:
         logging.info("Running with profiler.")
         with torch.autograd.profiler.profile() as prof:
-            run_fn(flags)
+            run_fn(flags, **kwargs)
         filename = "chrome-%s.trace" % time.strftime("%Y%m%d-%H%M%S")
         logging.info("Writing profiler trace to '%s.gz'", filename)
         prof.export_chrome_trace(filename)
         os.system("gzip %s" % filename)
     else:
-        run_fn(flags)
+        run_fn(flags, **kwargs)
 
 
 if __name__ == "__main__":
