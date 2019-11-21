@@ -115,6 +115,9 @@ def add_args(parser):
         default="true",
         help="Use LSTM in agent model.",
     )
+    parser.add_argument(
+        "--seed", type=int, default=1234, help="Initial random seed for torch.random"
+    )
 
     # GALA settings.
     parser.add_argument(
@@ -739,6 +742,8 @@ def test(flags, **kwargs):
 
 
 def main(flags, rank=0, barrier=None, device="cuda:0", gossip_buffer=None):
+    torch.random.manual_seed(flags.seed)
+
     # We disable batching in learner as unroll lengths could different across
     # actors due to partial rollouts created by env resets.
     assert flags.batch_size == 1, "Batching in learner not supported currently"
