@@ -51,6 +51,8 @@ list(APPEND
   -Wno-narrowing
 )
 
+find_package(fmt REQUIRED)
+
 # Find GFlags
 SET(GFLAG_DEPENDENCIES "")
 find_package(gflags CONFIG QUIET)

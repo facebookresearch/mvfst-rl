@@ -190,8 +190,6 @@ CongestionControlType RLCongestionController::type() const noexcept {
   return CongestionControlType::None;
 }
 
-void RLCongestionController::setConnectionEmulation(uint8_t) noexcept {}
-
 uint64_t RLCongestionController::getBytesInFlight() const noexcept {
   return bytesInFlight_;
 }

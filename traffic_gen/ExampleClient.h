@@ -16,6 +16,7 @@
 #include <glog/logging.h>
 #include <quic/api/QuicSocket.h>
 #include <quic/client/QuicClientTransport.h>
+#include <quic/client/handshake/FizzClientQuicHandshakeContext.h>
 #include <quic/congestion_control/CongestionControllerFactory.h>
 
 #include <traffic_gen/Utils.h>
@@ -120,11 +121,14 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
 
   void connect() {
     auto sock = std::make_unique<folly::AsyncUDPSocket>(evb_);
-    quicClient_ =
-        std::make_shared<quic::QuicClientTransport>(evb_, std::move(sock));
+    auto fizzClientContext =
+        FizzClientQuicHandshakeContext::Builder()
+            .setCertificateVerifier(
+                std::make_unique<DummyCertificateVerifier>())
+            .build();
+    quicClient_ = std::make_shared<quic::QuicClientTransport>(
+        evb_, std::move(sock), std::move(fizzClientContext));
     quicClient_->setHostname("example.org");
-    quicClient_->setCertificateVerifier(
-        std::make_unique<DummyCertificateVerifier>());
     quicClient_->addNewPeerAddress(addr_);
     quicClient_->setCongestionControllerFactory(ccFactory_);
 
