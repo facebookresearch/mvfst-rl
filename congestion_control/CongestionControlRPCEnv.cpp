@@ -10,6 +10,8 @@
 
 #include <grpc++/grpc++.h>
 
+#include "Utils.h"
+
 using namespace grpc;
 using namespace rpcenv;
 
@@ -126,12 +128,10 @@ void CongestionControlRPCEnv::loop(const std::string& address) {
 
 void CongestionControlRPCEnv::fillNDArray(rpcenv::NDArray* ndarray,
                                           const torch::Tensor& tensor) {
-  // 11 -> float32. Hacky, but we can't use NPY_* defines as
-  // we don't have a Python interpreter here.
-  ndarray->set_dtype(11);
   for (const auto& dim : tensor.sizes()) {
     ndarray->add_shape(dim);
   }
+  ndarray->set_dtype(quic::utils::aten_to_numpy_dtype(tensor.scalar_type()));
   ndarray->set_data(tensor.contiguous().data_ptr(), tensor.nbytes());
 }
 
