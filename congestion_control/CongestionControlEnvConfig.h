@@ -47,6 +47,10 @@ struct CongestionControlEnvConfig {
   // RL server address ("<host>:<port>" or "unix:<path>") for remote mode.
   std::string rpcAddress{"unix:/tmp/rl_server_path"};
 
+  // For use in training to uniquely identify an actor across episodic
+  // connections to RL server.
+  int64_t actorId{0};
+
   Aggregation aggregation{Aggregation::TIME_WINDOW};
   std::chrono::milliseconds windowDuration{100};  // Time window duration
   uint32_t windowSize{10};                        // Fixed window size

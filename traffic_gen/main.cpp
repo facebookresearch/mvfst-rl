@@ -26,6 +26,9 @@ DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
 DEFINE_string(
     cc_env_mode, "local",
     "CongestionControlEnv mode for RL cc_algo - [local|remote|random]");
+DEFINE_int64(cc_env_actor_id, 0,
+             "For use in training to uniquely identify an actor across "
+             "episodic connections to RL server.");
 DEFINE_string(cc_env_model_file, "traced_model.pt",
               "PyTorch traced model file for local mode");
 DEFINE_string(
@@ -79,6 +82,7 @@ makeRLCongestionControllerFactory() {
 
   cfg.modelFile = FLAGS_cc_env_model_file;
   cfg.rpcAddress = FLAGS_cc_env_rpc_address;
+  cfg.actorId = FLAGS_cc_env_actor_id;
 
   if (FLAGS_cc_env_agg == "time") {
     cfg.aggregation = Config::Aggregation::TIME_WINDOW;
