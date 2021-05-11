@@ -12,7 +12,7 @@
 #include <fizz/protocol/CertificateVerifier.h>
 #include <fizz/protocol/clock/test/Mocks.h>
 #include <fizz/server/FizzServerContext.h>
-#include <quic/handshake/QuicFizzFactory.h>
+#include <quic/fizz/handshake/QuicFizzFactory.h>
 
 namespace quic {
 namespace traffic_gen {

@@ -10,12 +10,14 @@
 
 #include <folly/Optional.h>
 #include <quic/QuicException.h>
+#include <quic/congestion_control/Bbr.h>
 #include <quic/congestion_control/third_party/windowed_filter.h>
 #include <quic/state/StateData.h>
 
 #include <limits>
 
 #include "CongestionControlEnvFactory.h"
+#include "RLBandwidthSampler.h"
 
 namespace quic {
 
@@ -23,13 +25,13 @@ using namespace std::chrono_literals;
 
 class RLCongestionController : public CongestionController,
                                public CongestionControlEnv::Callback {
- public:
+public:
   RLCongestionController(
-      QuicConnectionStateBase& conn,
+      QuicConnectionStateBase &conn,
       std::shared_ptr<CongestionControlEnvFactory> envFactory);
 
   void onRemoveBytesFromInflight(uint64_t) override;
-  void onPacketSent(const OutstandingPacket& packet) override;
+  void onPacketSent(const OutstandingPacket &packet) override;
   void onPacketAckOrLoss(folly::Optional<AckEvent>,
                          folly::Optional<LossEvent>) override;
 
@@ -44,18 +46,20 @@ class RLCongestionController : public CongestionController,
 
   bool isAppLimited() const noexcept override;
 
- private:
-  void onPacketAcked(const AckEvent&);
-  void onPacketLoss(const LossEvent&);
+  void getStats(CongestionControllerStats& /*stats*/) const override {}
+
+private:
+  void onPacketAcked(const AckEvent &);
+  void onPacketLoss(const LossEvent &);
 
   // CongestionControlEnv::Callback
-  void onUpdate(const uint64_t& cwndBytes) noexcept override;
+  void onUpdate(const uint64_t &cwndBytes) noexcept override;
 
-  bool setNetworkState(const folly::Optional<AckEvent>& ack,
-                       const folly::Optional<LossEvent>& loss,
-                       NetworkState& obs);
+  bool setNetworkState(const folly::Optional<AckEvent> &ack,
+                       const folly::Optional<LossEvent> &loss,
+                       NetworkState &obs);
 
-  QuicConnectionStateBase& conn_;
+  QuicConnectionStateBase &conn_;
   uint64_t bytesInFlight_{0};
   uint64_t cwndBytes_;
 
@@ -65,12 +69,14 @@ class RLCongestionController : public CongestionController,
   WindowedFilter<std::chrono::microseconds,
                  MinFilter<std::chrono::microseconds>, uint64_t,
                  uint64_t>
-      minRTTFilter_;  // To get min RTT over 10 seconds
+      minRTTFilter_; // To get min RTT over 10 seconds
 
   WindowedFilter<std::chrono::microseconds,
                  MinFilter<std::chrono::microseconds>, uint64_t,
                  uint64_t>
-      standingRTTFilter_;  // To get min RTT over srtt/2
+      standingRTTFilter_; // To get min RTT over srtt/2
+
+  RLBandwidthSampler bandwidthSampler_; // bandwidth estimator
 
   // Variables to track conn_.lossState values from previous ack or loss
   // to compute state deltas for current ack or loss
@@ -82,4 +88,4 @@ class RLCongestionController : public CongestionController,
   uint32_t prevTimeoutBasedRtxCount_{0};
 };
 
-}  // namespace quic
+} // namespace quic

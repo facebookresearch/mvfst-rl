@@ -8,12 +8,11 @@
 # Exports helper static libs from third-party deps
 
 if(NOT INFERENCE_ONLY)
-  # Lib for generated libtorchbeast protobuf files.
-  # Somewhat follows from torchbeast/setup.py
+  # Lib for generated torchbeast RPC protobuf files (ref torchbeast/setup.py).
   add_library(
     rpcenv_pb STATIC
-    torchbeast/libtorchbeast/rpcenv.pb.cc
-    torchbeast/libtorchbeast/rpcenv.grpc.pb.cc
+    torchbeast/torchbeast/rpc.pb.cc
+    torchbeast/torchbeast/rpc.grpc.pb.cc
   )
 
   target_compile_options(
@@ -51,6 +50,7 @@ target_link_libraries(
   mvfst::mvfst_codec_types
   mvfst::mvfst_constants
   mvfst::mvfst_exception
+  mvfst::mvfst_fizz_client
   mvfst::mvfst_flowcontrol
   mvfst::mvfst_handshake
   mvfst::mvfst_happyeyeballs

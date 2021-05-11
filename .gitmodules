@@ -1,6 +1,7 @@
 [submodule "third-party/mvfst"]
 	path = third-party/mvfst
-	url = https://github.com/facebookincubator/mvfst
-[submodule "third-party/grpc"]
-	path = third-party/grpc
-	url = https://github.com/grpc/grpc
+	url = https://github.com/odelalleau/mvfst.git
+[submodule "third-party/torchbeast"]
+	path = third-party/torchbeast
+	url = https://github.com/facebookresearch/torchbeast.git
+	branch = mvfst-rl

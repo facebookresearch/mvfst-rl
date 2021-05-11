@@ -10,8 +10,11 @@ add_library(
   CongestionControlEnv.cpp
   CongestionControlEnvConfig.cpp
   CongestionControlLocalEnv.cpp
+  CongestionControlFixedCwndEnv.cpp
   NetworkState.cpp
+  RLBandwidthSampler.cpp
   RLCongestionController.cpp
+  Utils.cpp
 )
 
 if(INFERENCE_ONLY)

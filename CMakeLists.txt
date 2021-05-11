@@ -10,15 +10,13 @@ project(
   mvfst-rl
 )
 
-find_package(mvfst)
-
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(QUIC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mvfst)
-set(TORCHBEAST_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party/torchbeast)
+set(THIRDPARTY_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third-party)
 
 message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
 message(STATUS "QUIC_ROOT: ${QUIC_ROOT}")
-message(STATUS "TORCHBEAST_ROOT: ${TORCHBEAST_ROOT}")
+message(STATUS "THIRDPARTY_ROOT: ${THIRDPARTY_ROOT}")
 message(STATUS "PREFIX_PATH: ${PREFIX_PATH}")
 message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
 message(STATUS "INFERENCE_ONLY: ${INFERENCE_ONLY}")
@@ -29,7 +27,11 @@ list(APPEND
   ${QUIC_ROOT}/cmake
 )
 
-set(CMAKE_CXX_STANDARD 14)
+find_package(mvfst)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND
   _QUIC_BASE_COMPILE_OPTIONS
@@ -79,8 +81,7 @@ if(BUILD_TESTS)
   enable_testing()
   list(APPEND CMAKE_REQUIRED_INCLUDES "${QUIC_ROOT}/_build/build/googletest/src/googletest/googlemock/include")
   list(APPEND CMAKE_REQUIRED_INCLUDES "${QUIC_ROOT}/_build/build/googletest/src/googletest/googletest/include")
-  list(APPEND REQUIRED_LINK_DIRS "${QUIC_ROOT}/_build/build/googletest/src/googletest-build/googlemock")
-  list(APPEND REQUIRED_LINK_DIRS "${QUIC_ROOT}/_build/build/googletest/src/googletest-build/googlemock/gtest")
+  list(APPEND REQUIRED_LINK_DIRS "${QUIC_ROOT}/_build/deps/lib")
   list(APPEND CMAKE_REQUIRED_LIBRARIES "gmock")
   list(APPEND CMAKE_REQUIRED_LIBRARIES "gtest")
 endif()
@@ -93,7 +94,7 @@ include_directories(
   ${PROJECT_ROOT}
   ${CMAKE_REQUIRED_INCLUDES}
   ${PREFIX_PATH}/include
-  ${TORCHBEAST_ROOT}/libtorchbeast
+  ${THIRDPARTY_ROOT}
 )
 
 link_directories(

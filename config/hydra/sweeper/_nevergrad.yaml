@@ -1,0 +1,68 @@
+defaults:
+    - nevergrad
+
+optim:
+    optimizer: RandomSearch
+    budget: ???
+    num_workers: 50
+    seed: 1234
+parametrization:
+    # Learner.
+    hidden_size:
+        - 128
+        - 1024
+    unroll_length:
+        - 8
+        - 80
+        - 256
+    seed:
+        lower: 1
+        upper: 9999
+        integer: true
+    end_of_episode_bootstrap:
+        - true
+        - false
+    entropy_cost:
+        - 1e-4
+        - 1e-3
+        - 1e-2
+    baseline_cost:
+        - 0.1
+        - 0.5
+        - 1.
+        - 2.
+    discounting:
+        - 0.95
+        - 0.99
+    reward_clipping:
+        - soft_asymmetric
+        - none
+        # - abs_one
+    reward_normalization_coeff:
+        - 1e-5
+        - 1e-4
+    learning_rate:
+        - 1e-4
+        - 5e-4
+    alpha:
+        - 0.9
+        - 0.99
+        - 0.999
+    momentum:
+        - 0
+        - 1e-3
+        - 1e-1
+
+    # Env.
+    cc_env_history_size:
+        - 1
+        - 16
+        - 64
+    cc_env_reward_delay_factor:
+        - 0.5
+        - 0.75
+        - 1.
+    cc_env_reward_packet_loss_factor:
+        - 0
+        - 1e-1
+        - 1

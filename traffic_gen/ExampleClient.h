@@ -16,7 +16,7 @@
 #include <glog/logging.h>
 #include <quic/api/QuicSocket.h>
 #include <quic/client/QuicClientTransport.h>
-#include <quic/client/handshake/FizzClientQuicHandshakeContext.h>
+#include <quic/fizz/client/handshake/FizzClientQuicHandshakeContext.h>
 #include <quic/congestion_control/CongestionControllerFactory.h>
 
 #include <traffic_gen/Utils.h>
@@ -171,12 +171,6 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
     auto res = quicClient_->writeChain(id, message->clone(), true, false);
     if (res.hasError()) {
       LOG(ERROR) << "ExampleClient writeChain error=" << uint32_t(res.error());
-    } else if (res.value()) {
-      LOG(INFO)
-          << "ExampleClient socket did not accept all data, buffering len="
-          << res.value()->computeChainDataLength();
-      data.append(std::move(res.value()));
-      quicClient_->notifyPendingWriteOnStream(id, this);
     } else {
       auto str = message->moveToFbString().toStdString();
       LOG(INFO) << "ExampleClient wrote \"" << str << "\""

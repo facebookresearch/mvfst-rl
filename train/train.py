@@ -7,21 +7,34 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-# Run as python3 -m train.train
+# Main training script.
+#
+# Local run:
+#   python3 -m train.train
+# SLURM run:
+#   python3 -m train.train hydra/launcher=submitit_slurm -m
 
-import argparse
 import copy
 import logging
 import torch
 import torch.multiprocessing as mp
 import os
 import shutil
-import sys
+import warnings
 
-from train import polybeast, pantheon_env, common, utils
-from train.constants import THIRD_PARTY_ROOT
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-sys.path.append(THIRD_PARTY_ROOT)
+import hydra
+
+from hydra.core.config_store import ConfigStore
+from omegaconf import OmegaConf
+
+from train import learner, pantheon_env, common, utils, models
+from train.constants import CONF_ROOT, THIRD_PARTY_ROOT
+
+utils.add_to_path(THIRD_PARTY_ROOT)
 
 from gala.gpu_gossip_buffer import GossipBuffer
 from gala.graph_manager import FullyConnectedGraph as Graph
@@ -31,36 +44,54 @@ logging.basicConfig(level=logging.INFO)
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
-def get_parser():
-    parser = argparse.ArgumentParser()
-    common.add_args(parser)
+# NB: using `Dict[str, Any]` as base class for the various configs is required to make
+# it possible to merge them through `OmegaConf.merge()` later. In the future it may be
+# better to use nested configs instead, as the current approach disables some of the
+# type-safety mechanisms from Hydra.
+@dataclass
+class ConfigTrain(Dict[str, Any]):
+    # Base directory for logging (will be set at runtime).
+    base_logdir: Optional[str] = None
+    # Whether to also test the model after training it.
+    test_after_train: bool = True
 
-    polybeast_parser = parser.add_argument_group("polybeast")
-    polybeast.add_args(polybeast_parser)
 
-    pantheon_parser = parser.add_argument_group("pantheon_env")
-    pantheon_env.add_args(pantheon_parser)
+# Register resolvers.
+OmegaConf.register_new_resolver("get_cpus_per_task", utils.get_cpus_per_task)
+OmegaConf.register_new_resolver("get_slurm_constraint", utils.get_slurm_constraint)
 
-    parser.add_argument("--base_logdir", type=str, default="logs")
+# Register the config.
+cs = ConfigStore.instance()
 
-    return parser
+with warnings.catch_warnings():
+    # Temporary workaround to hide a deprecation warning with OmegaConf 2.1.0.rc1.
+    # See https://github.com/omry/omegaconf/issues/721
+    warnings.simplefilter("ignore")
+    cs.store(
+        name="base_config",
+        # We merge all configs from multiple sources.
+        node=OmegaConf.merge(
+            ConfigTrain,
+            common.ConfigCommon,
+            learner.ConfigLearner,
+            pantheon_env.ConfigEnv,
+        ),
+    )
 
 
 def init_logdirs(flags):
     flags.logdir = os.path.join(flags.base_logdir, flags.mode)
-    flags.savedir = os.path.join(flags.logdir, "torchbeast")
 
     # Clean run for test mode
     if flags.mode != "train" and os.path.exists(flags.logdir):
         shutil.rmtree(flags.logdir)
 
     os.makedirs(flags.logdir, exist_ok=True)
-    os.makedirs(flags.savedir, exist_ok=True)
 
     flags.checkpoint = os.path.join(flags.base_logdir, "checkpoint.tar")
     flags.traced_model = os.path.join(flags.base_logdir, "traced_model.pt")
 
-    if flags.mode != "train":
+    if flags.mode != "train" and "mvfst_rl" in pantheon_env.get_test_schemes(flags):
         assert os.path.exists(
             flags.checkpoint
         ), "Checkpoint {} missing in {} mode".format(flags.checkpoint, flags.mode)
@@ -80,14 +111,7 @@ def make_gossip_buffer(flags, num_agents, mng, device):
         topology.append(graph)
 
     # Initialize parameter buffer
-    flags.observation_shape = (1, 1, flags.observation_length)
-    model = polybeast.Net(
-        observation_shape=flags.observation_shape,
-        hidden_size=flags.hidden_size,
-        num_actions=flags.num_actions,
-        use_lstm=flags.use_lstm,
-    )
-    model.to(device)
+    model = learner.make_train_model(flags, device)
 
     # Keep track of local iterations since learner's last sync
     sync_list = mng.list([0 for _ in range(num_agents)])
@@ -116,32 +140,36 @@ def make_gossip_buffer(flags, num_agents, mng, device):
     return gossip_buffer, _references
 
 
-def run_remote(flags, train=True):
-    flags.mode = "train" if train else "test"
-    flags.disable_cuda = not train
+def train(flags):
+    flags.mode = "train"
     flags.cc_env_mode = "remote"
 
+    if torch.cuda.is_available():
+        flags.learner_device = "cuda:0"
+        flags.inference_device = "cuda:1"
+
+    # For GALA
     proc_manager = mp.Manager()
     barrier = None
     shared_gossip_buffer = None
-    cuda = not flags.disable_cuda and torch.cuda.is_available()
 
+    # In GALA mode, start multiple replicas of the torchbeast-pantheon setup.
     num_agents = 1
-    if train and flags.num_gala_agents > 1:
-        # In GALA mode. Start multiple replicas of the polybeast-pantheon setup.
+    if flags.num_gala_agents > 1:
         num_agents = flags.num_gala_agents
         logging.info("In GALA mode, will start {} agents".format(num_agents))
         barrier = proc_manager.Barrier(num_agents)
 
         # Shared-gossip-buffer on GPU-0
-        device = torch.device("cuda:0" if cuda else "cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         shared_gossip_buffer, _references = make_gossip_buffer(
             flags, num_agents, proc_manager, device
         )
 
     base_logdir = flags.base_logdir
-    polybeast_proc = []
+    learner_proc = []
     pantheon_proc = []
+    stop_event = []
     for rank in range(num_agents):
         flags.base_logdir = (
             os.path.join(base_logdir, "gala_{}".format(rank))
@@ -156,51 +184,68 @@ def run_remote(flags, train=True):
             os.remove(address)
         except OSError:
             pass
-        flags.address = "unix:{}".format(address)
-        flags.server_address = flags.address
+        flags.server_address = "unix:{}".format(address)
 
-        # Round-robin device assignment
-        device = "cuda:{}".format(rank % torch.cuda.device_count()) if cuda else "cpu"
+        # Round-robin device assignment for GALA
+        if num_agents > 1 and torch.cuda.is_available():
+            flags.learner_device = "cuda:{}".format(rank % torch.cuda.device_count())
+            flags.inference_device = "cuda:{}".format(rank % torch.cuda.device_count())
 
         logging.info(
-            "Starting agent {} on device {}. Mode={}, logdir={}".format(
-                rank, device, flags.mode, flags.logdir
+            "Starting agent {}. Mode={}, logdir={}".format(
+                rank, flags.mode, flags.logdir
             )
         )
-        polybeast_proc.append(
+
+        stop_event.append(mp.Event())
+        learner_proc.append(
             mp.Process(
-                target=polybeast.main,
-                args=(flags, rank, barrier, device, shared_gossip_buffer),
+                target=learner.main,
+                kwargs=dict(
+                    flags=flags,
+                    rank=rank,
+                    barrier=barrier,
+                    gossip_buffer=shared_gossip_buffer,
+                    stop_event=stop_event[-1],
+                ),
                 daemon=False,
             )
         )
         pantheon_proc.append(
             mp.Process(target=pantheon_env.main, args=(flags,), daemon=False)
         )
-        polybeast_proc[rank].start()
+        learner_proc[rank].start()
         pantheon_proc[rank].start()
 
-    if train:
-        # Training is driven by polybeast. Wait until it returns and then
-        # kill pantheon_env.
-        for rank in range(num_agents):
-            polybeast_proc[rank].join()
-            pantheon_proc[rank].kill()
-    else:
-        # Testing is driven by pantheon_env. Wait for it to join and then
-        # kill polybeast.
-        for rank in range(num_agents):
-            pantheon_proc[rank].join()
-            polybeast_proc[rank].kill()
+    # The shutdown sequence of a clean run is as follows:
+    #   1. Wait until `stop_event` is set by the learner (=end of training notification)
+    #   2. Kill the Pantheon process
+    #   3. Clear `stop_event` to notify the learner it can exit (in particular, stop
+    #      the RPC server).
+    #   4. Wait until the learner process has exit
+    # The motivation for this somewhat convoluted logic is that if we don't do #2 before
+    # stopping the RPC server (in #3), then the Pantheon process will crash when the RPC
+    # server is stopped, triggering meaningless error messages in the logs.
+    for rank in range(num_agents):
+        stop_event[rank].wait()
+        logging.info(
+            f"Stop event #{rank} set, will kill corresponding env (pid="
+            f"{pantheon_proc[rank].pid})"
+        )
+        utils.kill_proc_tree(pantheon_proc[rank].pid)
+        stop_event[rank].clear()
+        learner_proc[rank].join()
 
-    logging.info("Done {}".format(flags.mode))
+    logging.info("Done training.")
 
 
-def test_local(flags):
+def test(flags):
     flags.mode = "test"
     init_logdirs(flags)
 
-    if not os.path.exists(flags.traced_model):
+    if "mvfst_rl" in pantheon_env.get_test_schemes(flags) and not os.path.exists(
+        flags.traced_model
+    ):
         logging.info("Missing traced model, tracing first")
         trace(copy.deepcopy(flags))
 
@@ -218,27 +263,62 @@ def trace(flags):
     init_logdirs(flags)
 
     logging.info("Tracing model from checkpoint {}".format(flags.checkpoint))
-    polybeast_proc = mp.Process(target=polybeast.main, args=(flags,), daemon=False)
-    polybeast_proc.start()
-    polybeast_proc.join()
+    learner_proc = mp.Process(target=learner.main, args=(flags,), daemon=False)
+    learner_proc.start()
+    learner_proc.join()
+    assert learner_proc.exitcode == 0, "tracing failed"
     logging.info("Done tracing to {}".format(flags.traced_model))
 
 
-def main(flags):
+def init(flags):
+    """
+    Initialization steps.
+    """
+    # Set log directory.
+    if flags.base_logdir is None:
+        flags.base_logdir = os.getcwd()
+    else:
+        # This should be an existing folder, typically one from an already
+        # trained model.
+        assert Path(flags.base_logdir).is_dir(), f"{flags.base_logdir} does not exist"
+
+    # By default, Hydra changes the cwd to the experiment's directory (which we
+    # use for logging purpose). In general it is best to avoid changing cwd, unless
+    # there is a good reason for doing so. So we restore the original cwd.
+    os.chdir(hydra.utils.get_original_cwd())
+
+    # Compute `observation_length` from other settings.
+    flags.observation_length = utils.get_observation_length(
+        flags.cc_env_history_size, flags.num_actions
+    )
+
+    # Ensure the list of actions is properly set.
+    if flags.cc_env_actions:
+        assert len(flags.cc_env_actions) == flags.num_actions
+    else:
+        # Use default list of actions.
+        flags.cc_env_actions = utils.get_actions(flags.num_actions)
+
+    # Use "spawn" multi-processing mode as the default "fork" is not PyTorch-friendly.
+    mp_start_method = mp.get_start_method(allow_none=True)
+    if mp_start_method is None:
+        mp.set_start_method("spawn")
+    else:
+        assert mp_start_method == "spawn"
+
+
+@hydra.main(config_path=CONF_ROOT, config_name="config")
+def main(flags) -> float:
+    init(flags)
     mode = flags.mode
     logging.info("Mode={}".format(mode))
 
     if mode == "train":
-        # Train, trace, and then test
-        run_remote(flags, train=True)
-        trace(flags)
-        run_remote(flags, train=False)
+        train(flags)
+        if flags.test_after_train:
+            test(flags)
     elif mode == "test":
-        # Only remote test
-        run_remote(flags, train=False)
-    elif mode == "test_local":
-        # Only local test
-        test_local(flags)
+        test(flags)
     elif mode == "trace":
         trace(flags)
     else:
@@ -250,9 +330,10 @@ def main(flags):
         )
     )
 
+    # The return value is to be compatible with hyper-parameter optimization algorithms.
+    return 0.0
+
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    parser = get_parser()
-    flags = parser.parse_args()
-    main(flags)
+    main()

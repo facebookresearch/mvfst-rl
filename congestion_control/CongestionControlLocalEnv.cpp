@@ -11,12 +11,12 @@
 namespace quic {
 
 namespace {
-// This should be polybeast.py --hidden_size + 1
-const int kLSTMHiddenSize = 512 + 1;
+// This should be train/learner.py --hidden_size + 1
+const int kLSTMHiddenSize = 1024 + 1;
 }
 
 CongestionControlLocalEnv::CongestionControlLocalEnv(
-    const Config& cfg, Callback* cob, const QuicConnectionStateBase& conn)
+    const Config &cfg, Callback *cob, const QuicConnectionStateBase &conn)
     : CongestionControlEnv(cfg, cob, conn) {
   LOG(INFO) << "Loading traced model from " << cfg.modelFile;
   module_ = torch::jit::load(cfg.modelFile, at::kCPU);
@@ -27,10 +27,11 @@ CongestionControlLocalEnv::CongestionControlLocalEnv(
 
 CongestionControlLocalEnv::~CongestionControlLocalEnv() {
   shutdown_ = true;
+  cv_.notify_all();
   thread_->join();
 }
 
-void CongestionControlLocalEnv::onObservation(Observation&& obs, float reward) {
+void CongestionControlLocalEnv::onObservation(Observation &&obs, float reward) {
   std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
   if (!lock) {
     LOG(WARNING) << __func__ << ": Still waiting for an update from model, "
@@ -53,15 +54,13 @@ void CongestionControlLocalEnv::loop() {
 
   // Initialize LSTM core state with zeros
   auto core_state = at::ivalue::Tuple::create(
-      {torch::zeros({1, 1, kLSTMHiddenSize}, at::kFloat),
-       torch::zeros({1, 1, kLSTMHiddenSize}, at::kFloat)});
+      {torch::zeros({1, kLSTMHiddenSize}, at::kFloat),
+       torch::zeros({1, kLSTMHiddenSize}, at::kFloat)});
 
   while (!shutdown_) {
     cv_.wait(lock, [&]() -> bool { return (observationReady_ || shutdown_); });
     if (shutdown_) {
-      LOG(INFO) << "Inference loop terminating after " << episode_step
-                << " steps, total return = " << episode_return;
-      return;
+      break;
     }
 
     done = (episode_step == 0);
@@ -69,29 +68,43 @@ void CongestionControlLocalEnv::loop() {
     VLOG(2) << "Episode step = " << episode_step
             << ", total return = " << episode_return;
 
-    auto reward_tensor = torch::from_blob(&reward_, {1, 1}, at::kFloat);
-    auto done_tensor = torch::from_blob(&done, {1, 1}, at::kByte);
+    // env_inputs: (obs, reward, done)
+    auto reward_tensor = torch::from_blob(&reward_, {1}, at::kFloat);
+    auto done_tensor = torch::from_blob(&done, {1}, at::kBool);
+    auto env_inputs = at::ivalue::Tuple::create({tensor_.reshape({1, -1}),
+                                                 std::move(reward_tensor),
+                                                 std::move(done_tensor)});
 
-    c10::Dict<std::string, torch::Tensor> input_dict;
-    input_dict.insert("frame", tensor_.reshape({1, 1, -1}));
-    input_dict.insert("reward", std::move(reward_tensor));
-    input_dict.insert("done", std::move(done_tensor));
+    // inputs: (last_action, (obs, reward, done), core_state)
+    auto last_action_tensor =
+        torch::from_blob(&action.cwndAction, {1}, at::kLong);
+    quic::utils::vector<torch::IValue> inputs{std::move(last_action_tensor),
+                                              std::move(env_inputs),
+                                              std::move(core_state)};
+    const auto &outputs = module_.forward(inputs).toTuple();
 
-    std::vector<torch::IValue> inputs{std::move(input_dict),
-                                      std::move(core_state)};
-    const auto& outputs = module_.forward(inputs).toTuple();
-
-    // Outputs: ((action, policy_logits, baseline), core_state)
-    const auto& action_tensor =
-        outputs->elements()[0].toTuple()->elements()[0].toTensor();
+    // output: (action, core_state)
+    const auto &action_tensor = outputs->elements()[0].toTensor();
     core_state = outputs->elements()[1].toTuple();
 
-    action.cwndAction = action_tensor[0][0].item<long>();
-    onAction(action);
+    action.cwndAction = *action_tensor.data_ptr<long>();
+
+    // If there is an ongoing shutdown, it is important not to trigger the action
+    // because `onAction()` calls `runImmediatelyOrRunInEventBaseThreadAndWait()`
+    // and this method will hang forever during shutdown, preventing the thread from
+    // exiting cleanly.
+    if (!shutdown_) {
+      onAction(action);
+    } else {
+      LOG(INFO) << "Skipping action due to shutdown in progress";
+    }
 
     episode_step++;
-    observationReady_ = false;  // Back to waiting
+    observationReady_ = false; // Back to waiting
   }
+
+  LOG(INFO) << "Inference loop terminating after " << episode_step
+            << " steps, total return = " << episode_return;
 }
 
-}  // namespace quic
+} // namespace quic

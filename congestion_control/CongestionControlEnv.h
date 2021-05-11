@@ -20,16 +20,17 @@
 
 #include "CongestionControlEnvConfig.h"
 #include "NetworkState.h"
+#include "Utils.h"
 
 namespace quic {
 
 class CongestionControlEnv {
- public:
+public:
   using Config = CongestionControlEnvConfig;
 
   struct Callback {
     virtual ~Callback() = default;
-    virtual void onUpdate(const uint64_t& cwndBytes) noexcept = 0;
+    virtual void onUpdate(const uint64_t &cwndBytes) noexcept = 0;
   };
 
   struct Action {
@@ -38,28 +39,28 @@ class CongestionControlEnv {
   };
 
   struct History {
-    Action action;  // Past action taken
-    float cwnd;     // Normalized cwnd after applying the action
+    Action action; // Past action taken
+    float cwnd;    // Normalized cwnd after applying the action
 
-    History(const Action& a, const float c) : action(a), cwnd(c) {}
+    History(const Action &a, const float c) : action(a), cwnd(c) {}
   };
 
   struct Observation {
-   public:
-    Observation(const Config& cfg) : cfg_(cfg) {}
+  public:
+    Observation(const Config &cfg) : cfg_(cfg) {}
 
     torch::Tensor toTensor() const;
-    void toTensor(torch::Tensor& tensor) const;
+    void toTensor(torch::Tensor &tensor) const;
 
-    std::vector<NetworkState> states;
-    std::vector<History> history;
+    quic::utils::vector<NetworkState> states;
+    quic::utils::vector<History> history;
 
-   private:
-    const Config& cfg_;
+  private:
+    const Config &cfg_;
   };
 
-  CongestionControlEnv(const Config& cfg, Callback* cob,
-                       const QuicConnectionStateBase& conn);
+  CongestionControlEnv(const Config &cfg, Callback *cob,
+                       const QuicConnectionStateBase &conn);
   virtual ~CongestionControlEnv() = default;
 
   /**
@@ -67,38 +68,44 @@ class CongestionControlEnv {
    * RLCongestionController) to share network state updates after every
    * Ack/Loss event.
    */
-  void onNetworkState(NetworkState&& state);
+  void onNetworkState(NetworkState &&state);
 
-  inline const Config& config() const { return cfg_; }
+  inline const Config &config() const { return cfg_; }
   inline float normMs() const { return cfg_.normMs; }
   inline float normBytes() const { return cfg_.normBytes; }
 
- protected:
+protected:
   /**
    * onObservation() will be triggered when there are enough state updates to
    * run the policy and predict an action. Subclasses should implement this
    * and return the action via onAction() callback, either synchronously or
    * asynchronously.
    */
-  virtual void onObservation(Observation&& obs, float reward) = 0;
+  virtual void onObservation(Observation &&obs, float reward) = 0;
 
   /**
    * Callback to be invoked by subclasses when there is an update
    * following onObservation().
    */
-  void onAction(const Action& action);
+  void onAction(const Action &action);
 
-  const Config& cfg_;
+  /**
+   * Return the updated value of cwnd after applying a specific action.
+   */
+  uint64_t getUpdatedCwndBytes(uint64_t currentCwndBytes,
+                               uint32_t actionIdx) const;
 
- private:
+  const Config &cfg_;
+
+private:
   class ObservationTimeout : public folly::HHWheelTimer::Callback {
-   public:
-    explicit ObservationTimeout(CongestionControlEnv* env,
-                                folly::EventBase* evb)
+  public:
+    explicit ObservationTimeout(CongestionControlEnv *env,
+                                folly::EventBase *evb)
         : env_(CHECK_NOTNULL(env)), evb_(CHECK_NOTNULL(evb)) {}
     ~ObservationTimeout() override = default;
 
-    void schedule(const std::chrono::milliseconds& timeoutMs) noexcept {
+    void schedule(const std::chrono::milliseconds &timeoutMs) noexcept {
       evb_->timer().scheduleTimeout(this, timeoutMs);
     }
 
@@ -108,14 +115,14 @@ class CongestionControlEnv {
 
     void callbackCanceled() noexcept override { return; }
 
-   private:
-    CongestionControlEnv* env_;
-    folly::EventBase* evb_;
+  private:
+    CongestionControlEnv *env_;
+    folly::EventBase *evb_;
   };
 
   void observationTimeoutExpired() noexcept;
   void handleStates();
-  float computeReward(const std::vector<NetworkState>& states) const;
+  float computeReward(const quic::utils::vector<NetworkState> &states) const;
   void updateCwnd(const uint32_t actionIdx);
 
   inline bool useStateSummary() const {
@@ -126,17 +133,21 @@ class CongestionControlEnv {
   /**
    * Compute sum, mean, std, min, max for each field.
    */
-  std::vector<NetworkState> stateSummary(
-      const std::vector<NetworkState>& states);
+  quic::utils::vector<NetworkState>
+  stateSummary(const quic::utils::vector<NetworkState> &states);
 
-  Callback* cob_{nullptr};
-  const QuicConnectionStateBase& conn_;
-  folly::EventBase* evb_{nullptr};
+  Callback *cob_{nullptr};
+  const QuicConnectionStateBase &conn_;
+  folly::EventBase *evb_{nullptr};
   ObservationTimeout observationTimeout_;
 
   uint64_t cwndBytes_;
-  std::vector<NetworkState> states_;
+  quic::utils::vector<NetworkState> states_;
   std::deque<History> history_;
+
+  // Keep track of running statistics on rewards.
+  uint64_t rewardCount_;
+  float rewardSum_;
 
   // Intermediate tensor to compute state summary
   torch::Tensor summaryTensor_{torch::empty({0}, torch::kFloat32)};
@@ -144,9 +155,9 @@ class CongestionControlEnv {
   std::chrono::time_point<std::chrono::steady_clock> lastObservationTime_;
 };
 
-std::ostream& operator<<(std::ostream& os,
-                         const CongestionControlEnv::Observation& observation);
-std::ostream& operator<<(std::ostream& os,
-                         const CongestionControlEnv::History& history);
+std::ostream &operator<<(std::ostream &os,
+                         const CongestionControlEnv::Observation &observation);
+std::ostream &operator<<(std::ostream &os,
+                         const CongestionControlEnv::History &history);
 
-}  // namespace quic
+} // namespace quic

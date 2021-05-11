@@ -25,7 +25,9 @@ class RLCongestionControllerFactory : public CongestionControllerFactory {
  public:
   RLCongestionControllerFactory(
       std::shared_ptr<CongestionControlEnvFactory> envFactory)
-      : envFactory_(CHECK_NOTNULL(envFactory)) {}
+      : envFactory_(envFactory) {
+        CHECK_NOTNULL(envFactory.get());
+      }
 
   ~RLCongestionControllerFactory() override = default;
 

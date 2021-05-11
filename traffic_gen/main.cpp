@@ -13,6 +13,7 @@
 #include <folly/portability/GFlags.h>
 #include <quic/QuicConstants.h>
 #include <quic/congestion_control/CongestionControllerFactory.h>
+#include <quic/congestion_control/Copa.h>
 
 #include "congestion_control/RLCongestionControllerFactory.h"
 #include "traffic_gen/ExampleClient.h"
@@ -25,10 +26,12 @@ DEFINE_int32(chunk_size, 1024 * 1024, "Chunk size to send at once");
 DEFINE_string(cc_algo, "cubic", "Congestion Control algorithm to use");
 DEFINE_string(
     cc_env_mode, "local",
-    "CongestionControlEnv mode for RL cc_algo - [local|remote|random]");
+    "CongestionControlEnv mode for RL cc_algo - [local|remote|random|fixed]");
 DEFINE_int64(cc_env_actor_id, 0,
              "For use in training to uniquely identify an actor across "
              "episodic connections to RL server.");
+DEFINE_int64(cc_env_job_id, -1,
+             "Index of the current job in the list of active jobs. -1 if undefined.");
 DEFINE_string(cc_env_model_file, "traced_model.pt",
               "PyTorch traced model file for local mode");
 DEFINE_string(
@@ -54,14 +57,32 @@ DEFINE_double(cc_env_norm_bytes, 1000.0,
 DEFINE_string(cc_env_actions, "0,/2,-10,+10,*2",
               "List of actions specifying how cwnd should be updated. The "
               "first action is required to be 0 (no-op action).");
+DEFINE_bool(
+    cc_env_reward_log_ratio, false,
+    "If true, then instead of "
+    " a * throughput - b * delay - c * loss "
+    "we use as reward "
+    " a * log(a' + throughput) - b * log(b' + delay) - c * log(c' + loss)");
 DEFINE_double(cc_env_reward_throughput_factor, 0.1,
-              "Throughput multiplier in reward");
-DEFINE_double(cc_env_reward_delay_factor, 0.01, "Delay multiplier in reward");
+              "Throughput multiplier in reward (a)");
+DEFINE_double(cc_env_reward_throughput_log_offset, 1.0,
+              "Offset to add to throughput in log version (a')");
+DEFINE_double(cc_env_reward_delay_factor, 0.01,
+              "Delay multiplier in reward (b)");
+DEFINE_double(cc_env_reward_delay_log_offset, 1.0,
+              "Offset to add to delay in log version (b')");
 DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
-              "Packet loss multiplier in reward");
+              "Packet loss multiplier in reward (c)");
+DEFINE_double(cc_env_reward_packet_loss_log_offset, 1.0,
+              "Offset to add to packet loss in log version (c')");
 DEFINE_bool(cc_env_reward_max_delay, true,
             "Whether to take max delay over observations in reward."
             "Otherwise, avg delay is used.");
+DEFINE_uint32(cc_env_fixed_cwnd, 10,
+              "Target fixed cwnd value (only used in 'fixed' env mode)");
+DEFINE_uint64(cc_env_min_rtt_window_length_us,
+              quic::kMinRTTWindowLength.count(),
+              "Window length (in us) of min RTT filter used to estimate delay");
 
 using namespace quic::traffic_gen;
 using Config = quic::CongestionControlEnv::Config;
@@ -76,6 +97,8 @@ makeRLCongestionControllerFactory() {
     cfg.mode = Config::Mode::REMOTE;
   } else if (FLAGS_cc_env_mode == "random") {
     cfg.mode = Config::Mode::RANDOM;
+  } else if (FLAGS_cc_env_mode == "fixed") {
+    cfg.mode = Config::Mode::FIXED;
   } else {
     LOG(FATAL) << "Unknown cc_env_mode: " << FLAGS_cc_env_mode;
   }
@@ -83,6 +106,7 @@ makeRLCongestionControllerFactory() {
   cfg.modelFile = FLAGS_cc_env_model_file;
   cfg.rpcAddress = FLAGS_cc_env_rpc_address;
   cfg.actorId = FLAGS_cc_env_actor_id;
+  cfg.jobId = FLAGS_cc_env_job_id;
 
   if (FLAGS_cc_env_agg == "time") {
     cfg.aggregation = Config::Aggregation::TIME_WINDOW;
@@ -102,16 +126,23 @@ makeRLCongestionControllerFactory() {
 
   cfg.parseActionsFromString(FLAGS_cc_env_actions);
 
+  cfg.rewardLogRatio = FLAGS_cc_env_reward_log_ratio;
   cfg.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
+  cfg.throughputLogOffset = FLAGS_cc_env_reward_throughput_log_offset;
   cfg.delayFactor = FLAGS_cc_env_reward_delay_factor;
+  cfg.delayLogOffset = FLAGS_cc_env_reward_delay_log_offset;
   cfg.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
+  cfg.packetLossLogOffset = FLAGS_cc_env_reward_packet_loss_log_offset;
   cfg.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
+  cfg.fixedCwnd = FLAGS_cc_env_fixed_cwnd;
+  cfg.minRTTWindowLength =
+      std::chrono::microseconds(FLAGS_cc_env_min_rtt_window_length_us);
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(cfg);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
 #if FOLLY_HAVE_LIBGFLAGS
   // Enable glog logging to stderr by default.
   gflags::SetCommandLineOptionWithMode("logtostderr", "1",

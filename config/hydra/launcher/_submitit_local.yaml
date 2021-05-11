@@ -1,0 +1,4 @@
+defaults:
+      - submitit_local
+
+timeout_min: 180

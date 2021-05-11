@@ -8,6 +8,7 @@
 */
 #pragma once
 
+#include "CongestionControlFixedCwndEnv.h"
 #include "CongestionControlLocalEnv.h"
 #include "CongestionControlRandomEnv.h"
 
@@ -38,6 +39,8 @@ class CongestionControlEnvFactory {
 #endif
       case CongestionControlEnv::Config::Mode::RANDOM:
         return std::make_unique<CongestionControlRandomEnv>(cfg_, cob, conn);
+      case CongestionControlEnv::Config::Mode::FIXED:
+        return std::make_unique<CongestionControlFixedCwndEnv>(cfg_, cob, conn);
       default:
         LOG(FATAL) << "Unknown mode";
         return nullptr;

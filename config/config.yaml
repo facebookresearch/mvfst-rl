@@ -1,0 +1,25 @@
+defaults:
+    - base_config
+    - override hydra/launcher: _submitit_slurm
+
+# batch_size: 8  # default=8
+# cc_env_min_rtt_window_length_us: 10_000_000  # default=10_000_000
+# cc_env_reward_delay_factor: 0.2  # default=0.2
+# discounting: 0.99  # default=0.99
+# end_of_episode_bootstrap: false  # default=false
+# entropy_cost: 0.01  # default=0.01
+# grad_norm_clipping: 0  # default=0
+# inference_batch_size: 2  # default=2
+# num_actors: 40  # default=40
+# test_after_train: true  # default=true
+# test_job_ids: []  # default=[]
+# test_schemes: mvfst_rl  # default=""
+# test_runs_per_job: 3  # default=3
+# train_job_ids: []  # default=[]
+# total_steps: 1_000_000  # default=1_000_000
+
+hydra:
+    run:
+        dir: /checkpoint/${oc.env:USER}/mvfst-rl/run/${now:%Y-%m-%d_%H-%M-%S}
+    sweep:
+        dir: /checkpoint/${oc.env:USER}/mvfst-rl/multirun/${now:%Y-%m-%d_%H-%M-%S}

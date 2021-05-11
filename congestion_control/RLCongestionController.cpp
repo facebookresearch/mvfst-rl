@@ -20,14 +20,18 @@ using namespace std::chrono;
 using Field = NetworkState::Field;
 
 RLCongestionController::RLCongestionController(
-    QuicConnectionStateBase& conn,
+    QuicConnectionStateBase &conn,
     std::shared_ptr<CongestionControlEnvFactory> envFactory)
     : conn_(conn),
       cwndBytes_(conn.transportSettings.initCwndInMss * conn.udpSendPacketLen),
       env_(envFactory->make(this, conn)),
-      minRTTFilter_(kMinRTTWindowLength.count(), 0us, 0),
-      standingRTTFilter_(100000, /*100ms*/
-                         0us, 0) {
+      minRTTFilter_(kMinRTTWindowLength.count(), 0us, 0), // length reset below
+      standingRTTFilter_(100000, 0us, 0),                 // 100ms
+      bandwidthSampler_(conn) {
+  DCHECK(env_);
+  const CongestionControlEnv::Config &cfg = env_->config();
+  minRTTFilter_.SetWindowLength(cfg.minRTTWindowLength.count());
+
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
            << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_ << " "
            << conn_;
@@ -40,12 +44,12 @@ void RLCongestionController::onRemoveBytesFromInflight(uint64_t bytes) {
            << conn_;
 }
 
-void RLCongestionController::onPacketSent(const OutstandingPacket& packet) {
-  addAndCheckOverflow(bytesInFlight_, packet.encodedSize);
+void RLCongestionController::onPacketSent(const OutstandingPacket &packet) {
+  addAndCheckOverflow(bytesInFlight_, packet.metadata.encodedSize);
 
   VLOG(10) << __func__ << " writable=" << getWritableBytes()
            << " cwnd=" << cwndBytes_ << " inflight=" << bytesInFlight_
-           << " bytesBufferred=" << conn_.flowControlState.sumCurStreamBufferLen
+           << " bytesBuffered=" << conn_.flowControlState.sumCurStreamBufferLen
            << " packetNum=" << packet.packet.header.getPacketSequenceNum()
            << " " << conn_;
 }
@@ -66,7 +70,7 @@ void RLCongestionController::onPacketAckOrLoss(
   }
 }
 
-void RLCongestionController::onPacketAcked(const AckEvent& ack) {
+void RLCongestionController::onPacketAcked(const AckEvent &ack) {
   DCHECK(ack.largestAckedPacket.hasValue());
   subtractAndCheckUnderflow(bytesInFlight_, ack.ackedBytes);
   minRTTFilter_.Update(
@@ -78,6 +82,11 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
       conn_.lossState.lrtt,
       std::chrono::duration_cast<microseconds>(ack.ackTime.time_since_epoch())
           .count());
+
+  // The `rttCounter` argument is set to 0 because it is ignored in
+  // `RLBandwidthSampler`. If one wanted to use a different bandwidth estimator
+  // (e.g. `BbrBandwidthSampler`) then a proper counter should be implemeneted.
+  bandwidthSampler_.onPacketAcked(ack, 0);
 
   VLOG(10) << __func__ << "ack size=" << ack.ackedBytes
            << " num packets acked=" << ack.ackedBytes / conn_.udpSendPacketLen
@@ -93,7 +102,7 @@ void RLCongestionController::onPacketAcked(const AckEvent& ack) {
            << conn_;
 }
 
-void RLCongestionController::onPacketLoss(const LossEvent& loss) {
+void RLCongestionController::onPacketLoss(const LossEvent &loss) {
   VLOG(10) << __func__ << " lostBytes=" << loss.lostBytes
            << " lostPackets=" << loss.lostPackets << " cwnd=" << cwndBytes_
            << " inflight=" << bytesInFlight_ << " " << conn_;
@@ -106,18 +115,18 @@ void RLCongestionController::onPacketLoss(const LossEvent& loss) {
   }
 }
 
-void RLCongestionController::onUpdate(const uint64_t& cwndBytes) noexcept {
+void RLCongestionController::onUpdate(const uint64_t &cwndBytes) noexcept {
   cwndBytes_ = cwndBytes;
 }
 
 bool RLCongestionController::setNetworkState(
-    const folly::Optional<AckEvent>& ack,
-    const folly::Optional<LossEvent>& loss, NetworkState& obs) {
-  const auto& state = conn_.lossState;
+    const folly::Optional<AckEvent> &ack,
+    const folly::Optional<LossEvent> &loss, NetworkState &obs) {
+  const auto &state = conn_.lossState;
 
-  const auto& rttMin = minRTTFilter_.GetBest();
-  const auto& rttStanding = standingRTTFilter_.GetBest().count();
-  const auto& delay =
+  const auto &rttMin = minRTTFilter_.GetBest();
+  const auto &rttStanding = standingRTTFilter_.GetBest().count();
+  const auto &delay =
       duration_cast<microseconds>(conn_.lossState.lrtt - rttMin).count();
   if (rttStanding == 0 || delay < 0) {
     LOG(ERROR)
@@ -147,6 +156,12 @@ bool RLCongestionController::setNetworkState(
       (state.totalBytesRetransmitted - prevTotalBytesRetransmitted_) /
       normBytes;
 
+  // The throughput is in bytes / s => we normalize it with `normBytes`.
+  DCHECK(bandwidthSampler_.getBandwidth().unitType ==
+         Bandwidth::UnitType::BYTES);
+  obs[Field::THROUGHPUT] =
+      bandwidthSampler_.getBandwidth().normalize() / normBytes;
+
   obs[Field::PTO_COUNT] = state.ptoCount;
   obs[Field::TOTAL_PTO_DELTA] = state.totalPTOCount - prevTotalPTOCount_;
   obs[Field::RTX_COUNT] = state.rtxCount - prevRtxCount_;
@@ -155,7 +170,6 @@ bool RLCongestionController::setNetworkState(
 
   if (ack && ack->largestAckedPacket.hasValue()) {
     obs[Field::ACKED] = ack->ackedBytes / normBytes;
-    obs[Field::THROUGHPUT] = obs[Field::CWND] / obs[Field::RTT_STANDING];
   }
 
   if (loss) {
@@ -202,7 +216,7 @@ void RLCongestionController::setAppLimited() { /* unsupported */
 }
 
 bool RLCongestionController::isAppLimited() const noexcept {
-  return false;  // not supported
+  return false; // not supported
 }
 
-}  // namespace quic
+} // namespace quic
