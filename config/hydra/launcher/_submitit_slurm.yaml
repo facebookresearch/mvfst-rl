@@ -1,7 +1,7 @@
 defaults:
       - submitit_slurm
 
-cpus_per_task: ${get_cpus_per_task:${mode}, ${num_actors}, ${test_job_ids}, ${test_after_train}, ${max_jobs}}
+cpus_per_task: ${get_cpus_per_task:${mode}, ${num_actors}, ${test_after_train}}
 gpus_per_node: 2
 mem_gb: 64
 nodes: 1

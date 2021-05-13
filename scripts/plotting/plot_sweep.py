@@ -35,7 +35,7 @@ import warnings
 from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -72,7 +72,10 @@ SHORT_NAMES = {
     "mean_throughput_mean": "th",
     "reward_normalization": "rn",
     "reward_normalization_coeff": "rnc",
+    "reward_normalization_stats_per_job": "rnj",
     "throughput_over_delay": "th/dl",
+    "use_job_id_in_actor": "ja",
+    "use_job_id_in_critic": "jc",
 }
 LONG_NAMES = {v: k for k, v in SHORT_NAMES.items()}  # inverse mapping
 
@@ -91,10 +94,29 @@ def load_config(path: str) -> typing.Dict:
 RunLog = typing.Dict[str, pd.DataFrame]
 
 
-def load_logs(path_and_config: Tuple[Path, Any], split_by_job_id: bool = False) -> RunLog:
+def load_logs(path_and_config: Tuple[Path, Any], split_by_job_id: bool = False, actors: str = "all") -> RunLog:
     """Loads run logs as pandas.DataFrame."""
     path, config = path_and_config
     df = pd.read_csv(f"{path}/logs.tsv", sep="\t")
+
+    # Check that we have data from all actors and that it is sufficiently balanced.
+    num_actors = config["flags"]["num_actors"]
+    counts = df["actor_id"].groupby(d.actor_id).count()
+    actor_ids = set(counts.index)
+    missing_actors = [i for i in range(num_actors) if i not in actor_ids]
+    if missing_actors:
+        print(f"WARNING: no data from actors: {sorted(missing_actors)}")
+    median_count = counts.median()
+    not_enough = counts[counts < median_count * 0.8]
+    if not not_enough.empty:
+        print(f"WARNING: some actors have fewer episodes than others:\n{not_enough}")
+    too_many = counts[counts > median_count * 1.2]
+    if not too_many.empty:
+        print(f"WARNING: some actors have more episodes than others:\n{too_many}")
+
+    if actors != "all":
+        df = df[df.job_type == actors]
+
     if split_by_job_id:
         all_job_ids = sorted(df.job_id.unique())
         dfs = [(job_id, df[df.job_id == job_id]) for job_id in all_job_ids]
@@ -172,12 +194,28 @@ def find_args_diff(configs: Dict) -> Set[str]:
               if a not in IGNORE_IN_DIFF and a not in fixed_args)
 
 
+def make_hashable(obj):
+    """Return a hashable version of `item`"""
+    # Is it already hashable?
+    try:
+        hash(obj)
+    except TypeError:
+        pass
+    else:
+        return obj
+    if isinstance(obj, dict):
+        return tuple((k, make_hashable(v)) for k, v in obj.items())
+    elif isinstance(obj, list):
+        return tuple(make_hashable(item) for item in obj)
+    else:
+        raise NotImplementedError(type(obj))
+
+
 def flags_to_set(flags: Dict) -> Set:
     """Turn a dictionary of settings into a set of unique (key, value) pairs"""
     # The tricky part is that some flags may be lists, that are not hashable.
     # We convert them to tuples here.
-    return {(k, tuple(v) if isinstance(v, list) else v)
-            for k, v in flags.items()}
+    return set((k, make_hashable(v)) for k, v in flags.items())
 
 
 RunPivot = str
@@ -185,9 +223,19 @@ ExpID = str
 
 
 def cluster_runs(
-    configs: Dict, xp_pivot: Callable, run_pivot: Optional[Callable] = None
+    configs: Dict, xp_pivot: Callable, run_pivot: Optional[Union[Callable, dict]] = None
 ) -> Dict[ExpID, Dict[RunPivot, List]]:
-    """Cluster runs by given experiment and pivot key."""
+    """
+    Cluster runs by given experiment and pivot key.
+
+    :param run_pivot: One of:
+        - `None` -> auto-detect parameters that were varied
+        - dict -> auto-detect parameters that were varied, but ignore those listed in
+            the key "ignore" of this dict (if it exists)
+        - callable -> called to obtain the run's key
+    """
+    if run_pivot is None:
+        run_pivot = {}
     # Group runs by experiment ID.
     xp_key = lambda path_config: xp_pivot(path_config[1])
     configs_by_id = groupby(sorted(configs.items(), key=xp_key), key=xp_key)
@@ -197,9 +245,16 @@ def cluster_runs(
     for experiment_id, path_configs in configs_by_id:
         path_configs = list(path_configs)
 
-        if run_pivot is None:
+        if isinstance(run_pivot, dict):
             # Auto-detect which parameters were varied in the sweep, and use them as labels.
             sweep_args = find_args_diff(dict(path_configs))
+
+            # Filter out parameters we want to ignore.
+            assert all(k in ["ignore"] for k in run_pivot)  # validate dict keys (currently only "ignore" is supported)
+            to_ignore = run_pivot.get("ignore", set())
+            to_ignore = {to_ignore} if isinstance(to_ignore, str) else set(to_ignore)
+            sweep_args = sweep_args - to_ignore
+
             print(f"Found the following sweep parameters for experiment `{experiment_id}`: {sweep_args}.")
 
             def auto_pivot(config):
@@ -231,7 +286,7 @@ def print_tree(nconfigs):
 Metrics = typing.Dict[ExpID, typing.Dict[RunPivot, RunLog]]
 
 
-def get_all_logs(nconfigs, experiment_id, lock=threading.Lock(), split_by_job_id=False):  # noqa: B008
+def get_all_logs(nconfigs, experiment_id, lock=threading.Lock(), split_by_job_id=False, actors="all"):  # noqa: B008
     with lock:
         print(f"Collecting metrics for {experiment_id}")
     split = nconfigs[experiment_id]
@@ -239,7 +294,7 @@ def get_all_logs(nconfigs, experiment_id, lock=threading.Lock(), split_by_job_id
     xp_logs = defaultdict(lambda: defaultdict(dict))
     for split_key, runs in split.items():
         pool = ThreadPoolExecutor(min(MAX_RUN_LOADERS, len(runs)))
-        log_loader = functools.partial(load_logs, split_by_job_id=split_by_job_id)
+        log_loader = functools.partial(load_logs, split_by_job_id=split_by_job_id, actors=actors)
         metrics = pool.map(log_loader, runs)
         for metrics_per_job in metrics:
             for job_id, r, m in metrics_per_job:
@@ -277,12 +332,12 @@ def get_label(key):
         return "|".join(key)
 
 
-def load_metrics(nconfigs, split_by_job_id: bool = False) -> Metrics:
+def load_metrics(nconfigs, split_by_job_id: bool = False, actors="all") -> Metrics:
     """Retrieve metrics into a clustered format (given clustered runs)."""
     pool = ThreadPoolExecutor(min(MAX_XP_LOADERS, len(nconfigs)))
-    pget = functools.partial(get_all_logs, nconfigs, split_by_job_id=split_by_job_id)
+    pget = functools.partial(get_all_logs, nconfigs, split_by_job_id=split_by_job_id, actors=actors)
     all_xp_logs = pool.map(pget, list(nconfigs.keys()))
-    
+
     metrics = {}
     for experiment_id, xp_logs in all_xp_logs:
         if split_by_job_id:
@@ -310,11 +365,16 @@ def load_experiments(
     xp_pivot: Optional[Callable] = None,
     run_pivot: Optional[Callable] = None,
     split_by_job_id: bool = False,
+    actors="all",
 ) -> Metrics:
     """Retrieves and clusters experiment data.
 
     By default, it'll attempt to discover sweep parameters and cluster
     experiments around them.
+
+    :param actors: One of "all", "train", "eval". If "train" then only metrics from training
+        actors (whose data is used to update the model) are reported. If "eval" then only
+        metrics from evaluation actors (whose data is not used for training) are reported.
     """
     configs = load_configs(paths, config_filter)
     if xp_pivot is None:
@@ -329,7 +389,7 @@ def load_experiments(
         xp_pivot = auto_pivot
     nc = cluster_runs(configs, xp_pivot, run_pivot)
     print_tree(nc)
-    return load_metrics(nc, split_by_job_id=split_by_job_id)
+    return load_metrics(nc, split_by_job_id=split_by_job_id, actors=actors)
 
 
 # -
@@ -714,7 +774,7 @@ run_pivot = None  # auto
 
 paths = get_paths(pattern)
 assert paths, f"no valid experiment data found for pattern '{pattern}'"
-data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=False)
+data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=False, actors="eval")
 # -
 
 # ## Training curves

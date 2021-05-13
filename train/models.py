@@ -83,7 +83,14 @@ class SimpleNet(nn.Module):
     def concat_to_job_id(self, tensor, job_id):
         """Concatenate a 2D tensor with the one-hot encoding associated to `job_id`"""
         one_hot = (
-            F.one_hot(job_id.flatten().long(), self.n_train_jobs)
+            F.one_hot(
+                # We clamp the job ID to its target range. It is the responsibility
+                # of the caller to ensure this does not cause problems downstream.
+                # In particular this is useful for evaluation actors whose job ID
+                # may be >= the number of training jobs.
+                torch.clamp(job_id.flatten().long(), 0, self.n_train_jobs - 1),
+                self.n_train_jobs,
+            )
             .type(tensor.dtype)
             .to(tensor.device)
         )

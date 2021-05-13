@@ -20,18 +20,12 @@ import torch
 import torch.multiprocessing as mp
 import os
 import shutil
-import warnings
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
 
 import hydra
 
-from hydra.core.config_store import ConfigStore
-from omegaconf import OmegaConf
-
-from train import learner, pantheon_env, common, utils, models
+from train import config, learner, pantheon_env, utils
 from train.constants import CONF_ROOT, THIRD_PARTY_ROOT
 
 utils.add_to_path(THIRD_PARTY_ROOT)
@@ -43,40 +37,8 @@ logging.basicConfig(level=logging.INFO)
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-
-# NB: using `Dict[str, Any]` as base class for the various configs is required to make
-# it possible to merge them through `OmegaConf.merge()` later. In the future it may be
-# better to use nested configs instead, as the current approach disables some of the
-# type-safety mechanisms from Hydra.
-@dataclass
-class ConfigTrain(Dict[str, Any]):
-    # Base directory for logging (will be set at runtime).
-    base_logdir: Optional[str] = None
-    # Whether to also test the model after training it.
-    test_after_train: bool = True
-
-
-# Register resolvers.
-OmegaConf.register_new_resolver("get_cpus_per_task", utils.get_cpus_per_task)
-OmegaConf.register_new_resolver("get_slurm_constraint", utils.get_slurm_constraint)
-
-# Register the config.
-cs = ConfigStore.instance()
-
-with warnings.catch_warnings():
-    # Temporary workaround to hide a deprecation warning with OmegaConf 2.1.0.rc1.
-    # See https://github.com/omry/omegaconf/issues/721
-    warnings.simplefilter("ignore")
-    cs.store(
-        name="base_config",
-        # We merge all configs from multiple sources.
-        node=OmegaConf.merge(
-            ConfigTrain,
-            common.ConfigCommon,
-            learner.ConfigLearner,
-            pantheon_env.ConfigEnv,
-        ),
-    )
+# Initialize config on import.
+config.init_config()
 
 
 def init_logdirs(flags):
@@ -298,6 +260,15 @@ def init(flags):
     else:
         # Use default list of actions.
         flags.cc_env_actions = utils.get_actions(flags.num_actions)
+
+    # Set the job IDs (independently for training and evaluation jobs).
+    for jobs_type in ["train_jobs", "eval_jobs"]:
+        all_job_ids = set()
+        for idx, job in enumerate(flags[jobs_type].jobs.values()):
+            if job.job_id is None:
+                job.job_id = idx
+            assert job.job_id not in all_job_ids, "duplicated job ID"
+            all_job_ids.add(job.job_id)
 
     # Use "spawn" multi-processing mode as the default "fork" is not PyTorch-friendly.
     mp_start_method = mp.get_start_method(allow_none=True)

@@ -48,7 +48,7 @@ import torchbeast
 
 
 @dataclass
-class ConfigLearner(Dict[str, Any]):
+class ConfigLearner:
     # Model output settings.
 
     # Experiment id (default: None).
@@ -81,6 +81,8 @@ class ConfigLearner(Dict[str, Any]):
     end_of_episode_bootstrap: bool = False
     # When training on more than one job (from `experiments.yml`), these flags
     # indicate whether the actor / critic should have access to the job ID.
+    # Be careful that setting `use_job_id_in_actor=True` is "cheating", and is
+    # not supported by evaluation actors.
     use_job_id_in_actor: bool = False
     use_job_id_in_critic: bool = False
 
@@ -273,12 +275,10 @@ def compute_metrics(
     pg_loss = compute_policy_gradient_loss(
         learner_logits, actions, vtrace_returns.pg_advantages
     )
-    baseline_loss = compute_baseline_loss(
-        # NB: if `end_of_episode_bootstrap` is True, then `vs` at end of episode
-        # is equal to the baseline, contributing to a zero cost. This is what we
-        # want, as we cannot learn from that step without knowing the next state.
-        vtrace_returns.vs - baseline
-    )
+    # NB: if `end_of_episode_bootstrap` is True, then `vs` at end of episode
+    # is equal to the baseline, contributing to a zero cost. This is what we
+    # want, as we cannot learn from that step without knowing the next state.
+    baseline_loss = compute_baseline_loss(vtrace_returns.vs - baseline)
     entropy_loss = compute_entropy_loss(learner_logits)
 
     # Total entropy if the learner was outputting a uniform distribution over actions
@@ -573,6 +573,15 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
     assert (
         flags.num_actors >= flags.inference_batch_size
     ), "Inference batch size must be <= number of actors"
+    assert (
+        flags.num_actors_eval < flags.num_actors
+    ), "The number of evaluation actors must be less than the total number of actors"
+    if flags.num_actors_eval > 0:
+        # This is a safety assert that might be disabled in the future if required
+        # (it would be ok if the training and evaluation jobs were the same).
+        assert (
+            not flags.use_job_id_in_actor
+        ), "evaluation actors cannot be used if the job ID must be provided to the actor"
     if flags.logdir:
         log_file_path = os.path.join(flags.logdir, "logs.tsv")
         logging.info(
@@ -589,6 +598,9 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             "summary statistics, and would need to be updated to work without."
         )
 
+    # Using maxsize=1 is meant to slow down the inference threads when learning is too
+    # slow to catch up. This avoids a situation where inputs to the learner might start
+    # getting really old, which would drastically hurt learning.
     unroll_queue = queue.Queue(maxsize=1)
     log_queue = queue.Queue()
 
@@ -624,7 +636,7 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             cwnd_mean=torch.zeros([flags.num_actors]),
             delay_mean=torch.zeros([flags.num_actors]),
             throughput_mean=torch.zeros([flags.num_actors]),
-            train_job_id=torch.zeros([flags.num_actors], dtype=torch.int64),
+            job_id=torch.zeros([flags.num_actors], dtype=torch.int64),
         )
     )
 
@@ -640,6 +652,7 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
     # Current agent states.
     agent_states = StructuredBuffer(copy.deepcopy(initial_states))
 
+    num_actors_train = flags.num_actors_train  # precompute for efficiency
     rollouts = Rollouts(
         dict(
             last_actions=torch.zeros((), dtype=torch.int64),
@@ -647,7 +660,8 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             actor_outputs=dummy_model_output,
         ),
         unroll_length=flags.unroll_length,
-        num_actors=flags.num_actors,
+        # Importantly, rollouts ignore evaluation actors.
+        num_actors=num_actors_train,
     )
 
     server = torchbeast.Server(flags.server_address, max_parallel_calls=4)
@@ -681,8 +695,12 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             logging.info("Actor ids needing reset: %s", actors_needing_reset.tolist())
 
             actor_infos.clear(actors_needing_reset)
-            rollouts.reset(actors_needing_reset)
             actions.clear(actors_needing_reset)
+
+            # Since rollouts do not use evaluation actors we need to remove them
+            # from the list of actors to reset.
+            r_ids = actors_needing_reset[actors_needing_reset < num_actors_train]
+            rollouts.reset(r_ids)
 
             initial_agent_states = model.initial_state(actors_needing_reset.numel())
             first_agent_states.set(actors_needing_reset, initial_agent_states)
@@ -704,12 +722,15 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             # Clear reward for agents that are done: it is meaningless as it is obtained with
             # the first observation, before the agent got a chance to take any action.
             reward[done] = 0.0
-            # We only update the `train_job_id` field once (when an episode starts, which
+            # We only update the `job_id` field once (when an episode starts, which
             # is when `done` is True). This is because it remains the same throughout the
             # whole episode.
-            extra_info = {"train_job_id": (obs[:, -1] * done).long()}
+            job_id = (obs[:, -1] * done).long()
         else:
-            extra_info = {}
+            # Note that it is important to provide `job_id` even if we do not want to change
+            # it. This is because the update in `StructuredBuffer.add()` assumes that the
+            # input data contains all fields.
+            job_id = torch.zeros(len(obs), dtype=torch.int64)
         actor_infos.add(
             actor_ids,
             dict(
@@ -723,7 +744,7 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
                 throughput_mean=state.get_mean(obs, state.Field.THROUGHPUT, dim=1)
                 * flags.cc_env_norm_bytes
                 / 1024 ** 2,  # convert to Mbytes/s
-                **extra_info,
+                job_id=job_id,
             ),
         )
 
@@ -740,27 +761,36 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             lambda t: t.cpu(), (actor_outputs, new_agent_states)
         )
 
-        timestep = dict(
-            last_actions=last_actions,
-            env_outputs=env_outputs,
-            actor_outputs=actor_outputs,
-        )
-        completed_ids, unrolls = rollouts.append(actor_ids, timestep)
-        if completed_ids.numel():
-            try:
-                unroll_queue.put(
-                    (completed_ids, unrolls, first_agent_states.get(completed_ids)),
-                    timeout=5.0,
-                )
-            except queue.Closed:
-                if server.running():
-                    raise
+        is_train_actor = actor_ids < num_actors_train
+        if is_train_actor.any():
+            timestep = dict(
+                last_actions=last_actions,
+                env_outputs=env_outputs,
+                actor_outputs=actor_outputs,
+            )
+            train_actor_ids = actor_ids
 
-            # Importantly, `first_agent_states` must contain the states *before* processing
-            # the current batch of data, because in `rollouts` we always start from the last
-            # item of the previous rollout (and we need the state before that one). This is
-            # why this line must happen before the update to `agent_states` below.
-            first_agent_states.set(completed_ids, agent_states.get(completed_ids))
+            if not is_train_actor.all():
+                # Keep only data from training actors.
+                timestep = nest.map(lambda t: t[is_train_actor], timestep)
+                train_actor_ids = actor_ids[is_train_actor]
+
+            completed_ids, unrolls = rollouts.append(train_actor_ids, timestep)
+            if completed_ids.numel():
+                try:
+                    unroll_queue.put(
+                        (completed_ids, unrolls, first_agent_states.get(completed_ids)),
+                        timeout=5.0,
+                    )
+                except queue.Closed:
+                    if server.running():
+                        raise
+
+                # Importantly, `first_agent_states` must contain the states *before* processing
+                # the current batch of data, because in `rollouts` we always start from the last
+                # item of the previous rollout (and we need the state before that one). This is
+                # why this line must happen before the update to `agent_states` below.
+                first_agent_states.set(completed_ids, agent_states.get(completed_ids))
 
         agent_states.set(actor_ids, new_agent_states)
 
@@ -805,6 +835,12 @@ def learn(
 ):
     assert flags.mode == "train"
     train_jobs = get_jobs(flags)
+    num_actors_train = flags.num_actors_train
+
+    eval_jobs = None
+    if flags.num_actors_eval > 0:
+        # The last actor will necessarily run evaluation jobs.
+        eval_jobs = get_jobs(flags, actor_id=flags.num_actors - 1)
 
     model = make_train_model(flags, flags.learner_device)
 
@@ -907,7 +943,7 @@ def learn(
                 cwnd_mean,
                 delay_mean,
                 throughput_mean,
-                train_job_id,
+                job_id,
             ) in zip(
                 ids.tolist(),
                 infos["episode_step"].tolist(),
@@ -915,7 +951,7 @@ def learn(
                 infos["cwnd_mean"].tolist(),
                 infos["delay_mean"].tolist(),
                 infos["throughput_mean"].tolist(),
-                infos["train_job_id"].tolist(),
+                infos["job_id"].tolist(),
             ):
                 episode_returns.append(episode_return)
 
@@ -924,12 +960,18 @@ def learn(
                 delay_mean /= episode_step
                 throughput_mean /= episode_step
 
-                # At this point, `train_job_id` is the index of the job in the
-                # list of training jobs for this experiment. But for logging
-                # purpose, we want to store the job ID as it would appear in
-                # the `train_job_ids` option (i.e., its index in the list of
-                # all jobs from `experiments.yml`). We do the conversion here.
-                job_id = train_jobs[train_job_id]["job_id"]
+                # At this point, `job_id` is the index of the job in the list of
+                # jobs for this experiment (either `train_jobs` or `eval_jobs`
+                # depending on the actor). But for logging purpose, we want to
+                # store the job ID as it would appear in the `{train,eval}_job_ids`
+                # option (i.e., its index in the list of all jobs).
+                # We do the conversion here.
+                if actor_id < num_actors_train:
+                    job_id = train_jobs[job_id].job_id
+                    job_type = "train"
+                else:
+                    job_id = eval_jobs[job_id].job_id
+                    job_type = "eval"
 
                 if tb_writer is not None:
                     tb_writer.add_scalar("actor/episode_steps", episode_step, steps)
@@ -946,6 +988,7 @@ def learn(
                     episode_step=episode_step,
                     episode_return=episode_return,
                     actor_id=actor_id,
+                    job_type=job_type,
                     job_id=job_id,
                     sps=sps,
                     loss=metrics_values["loss/total"],

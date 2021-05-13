@@ -7,35 +7,42 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-import argparse
+import copy
 import logging
 import os
 import subprocess
 import random
-import shlex
 import shutil
 import threading
 import time
 
 from dataclasses import dataclass
 from os import path
+from pathlib import Path
 from typing import Any, Dict, List
 
-from train import common, utils
-from train.utils import StrEnum, default_empty_list, default_list
+from omegaconf import OmegaConf
+
+from train import resolvers, utils
+from train.constants import PANTHEON_ROOT, TRACES_ROOT
+from train.env_spec import ConfigEnvSpec, ConfigJobs, get_env_cmd, set_scaled_traces
+from train.utils import StrEnum, default_empty_dict, default_empty_list, default_list
 
 logging.basicConfig(level=logging.INFO)
 
 
 @dataclass
-class ConfigEnv(Dict[str, Any]):
+class ConfigEnv:
     # Maximum number of different Pantheon emulated experiments to use (0 for all).
     max_jobs: int = 0
     # Comma separate list of job ids. If set, filter and *train* only on the
-    # specified pantheon jobs.
+    # specified pantheon `train_jobs`.
     train_job_ids: List[int] = default_empty_list()
+    # Comma separate list of job ids. If set, filter and *evaluate* only on the
+    # specified pantheon `eval_jobs`.
+    eval_job_ids: List[int] = default_empty_list()
     # Comma separate list of job ids. If set, filter and *test* only on the
-    # specified pantheon jobs.
+    # specified pantheon `eval_jobs`.
     test_job_ids: List[int] = default_empty_list()
     # Comma separate list of congestion control schemes. If set, filter and test
     # only on the specified schemes.
@@ -44,6 +51,27 @@ class ConfigEnv(Dict[str, Any]):
     test_runs_per_job: int = 3
     # Verbose log-level for Pantheon sender.
     loglevel: int = 1
+    # Command line parameters common to all environments.
+    common_params: List[str] = default_list(
+        ["local", "--data-dir", "{data_dir}", "--pkill-cleanup"]
+    )
+    # Path to the script launching the environment.
+    test_path: str = os.path.join(PANTHEON_ROOT, "src", "experiments", "test.py")
+    # Path to the script analyzing results.
+    analyze_path: str = os.path.join(PANTHEON_ROOT, "src", "analysis", "analyze.py")
+    # Directory containing trace files.
+    traces_dir: str = TRACES_ROOT
+    # Minimum size (in number of rows) of generated scaled trace files.
+    # Larger values lead to more accurate traces but add processing time.
+    min_scaled_trace_size: int = 100000
+    # Specifications of training jobs.
+    train_jobs: ConfigJobs = ConfigJobs()
+    # Specifications of evaluation jobs (executed by `num_actors_eval` actors).
+    eval_jobs: ConfigJobs = ConfigJobs()
+    # Seed used to generate random jobs. Note that using a different number of
+    # actors will also change the generated jobs (each actor generates its own
+    # jobs, from a unique seed derived from `jobs_seed` and the actor ID).
+    jobs_seed: int = 123
     # CongestionControlEnvConfig::Mode. Local only support testing.
     cc_env_mode: StrEnum("CCEnvMode", "local, remote") = "remote"
     # tate aggregation type.
@@ -92,32 +120,68 @@ class ConfigEnv(Dict[str, Any]):
     cc_env_min_rtt_window_length_us: int = 10_000_000_000
 
 
-def train_run(flags, jobs, thread_id):
+def get_actor_data(flags, actor_id):
+    """Return the actor's list of jobs and Pantheon environment"""
+    # Fetch list of jobs for the current thread.
+    jobs = utils.get_jobs(flags, actor_id=actor_id)
+
+    # Each actor (= thread) gets its own seed to sample jobs' parameters.
+    resolvers.seed_thread_rng(flags.jobs_seed + actor_id)
+
+    # Environment variables for Pantheon.
+    pantheon_env = get_pantheon_env(flags)
+
+    return jobs, pantheon_env
+
+
+def get_job_cmd(flags, jobs, job_id, actor_id, data_dir):
+    """Return the command line associate to a given job in the list of all jobs"""
+    # Select the desired job and resolve its parameters (=> sampling random numbers).
+    job = copy.deepcopy(jobs[job_id])
+    OmegaConf.resolve(job)
+
+    # Generate the uplink & donwlink scaled traces (if needed).
+    set_scaled_traces(job, data_dir)
+
+    # Generate the command line (expanding the data directory in the template).
+    cmd_tmpl = get_env_cmd(flags, job)
+    cmd = [utils.safe_format(c, {"data_dir": data_dir}) for c in cmd_tmpl]
+    cmd = update_cmd(cmd, flags, actor_id, job_id)
+
+    return cmd
+
+
+def train_run(flags, thread_id):
     """
     Each pantheon job runs for a default of 30s (max 60s allowed).
     We treat each such run as a separate episode for training and run
     randomly chosen job in parallel.
     """
-    pantheon_env = get_pantheon_env(flags)
+    # Fetch list of jobs for the current thread.
+    jobs, pantheon_env = get_actor_data(flags, actor_id=thread_id)
+    logging.info(f"Thread {thread_id}: running {len(jobs)} jobs")
+    # Generator giving the next random job to train on.
+    job_ids = utils.balanced_randints(resolvers.thread_data.rng, len(jobs))
+
     episode = 0
     while True:
-        # Pick a random experiment to run
-        job_id = random.choice(range(len(jobs)))
-        cmd_tmpl = jobs[job_id]["cmd_tmpl"]
-
-        # Expand data_dir in cmd template
-        data_dir = path.join(
-            flags.logdir, "train_tid{}_run{}_expt{}".format(thread_id, episode, job_id)
+        # Pick a random job to run.
+        job_id = next(job_ids)
+        data_dir = (
+            Path(flags.logdir) / f"train_tid{thread_id}_run{episode}_expt{job_id}"
         )
-        cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
-        cmd = update_cmd(cmd, flags, thread_id, job_id=job_id)
 
+        cmd = get_job_cmd(
+            flags, jobs=jobs, job_id=job_id, actor_id=thread_id, data_dir=data_dir
+        )
+
+        # Launch the job.
+        p = subprocess.Popen(cmd, env=pantheon_env)
         logging.info(
-            "Thread: {}, episode: {}, experiment: {}, cmd: {}".format(
-                thread_id, episode, job_id, " ".join(cmd)
+            "Thread: {}, episode: {}, experiment: {}, subprocess: {}, cmd: {}".format(
+                thread_id, episode, job_id, p.pid, " ".join(cmd)
             )
         )
-        p = subprocess.Popen(cmd, env=pantheon_env)
         p.wait()
         episode += 1
 
@@ -134,17 +198,18 @@ def train_run(flags, jobs, thread_id):
         utils.delete_dir(data_dir, max_tries=3, sleep_time=2)
 
 
-def test_run(flags, jobs, thread_id):
+def test_run(flags, thread_id):
     """
     Thread i runs jobs[i % len(jobs)] flags.test_runs_per_job times.
     """
-    job_id = thread_id % len(jobs)
-    cmd_tmpl = jobs[job_id]["cmd_tmpl"]
+    jobs, pantheon_env = get_actor_data(flags, actor_id=thread_id)
 
-    # Expand data_dir in cmd template
+    job_id = thread_id % len(jobs)
     data_dir = path.join(flags.logdir, "test_expt{}".format(job_id))
-    cmd = utils.safe_format(cmd_tmpl, {"data_dir": data_dir})
-    cmd = update_cmd(cmd, flags, thread_id)
+
+    cmd = get_job_cmd(
+        flags, jobs=jobs, job_id=job_id, actor_id=thread_id, data_dir=data_dir
+    )
 
     # Run tests
     logging.info(
@@ -152,7 +217,6 @@ def test_run(flags, jobs, thread_id):
             thread_id, job_id, " ".join(cmd)
         )
     )
-    pantheon_env = get_pantheon_env(flags)
     p = subprocess.Popen(cmd, env=pantheon_env)
     p.wait()
     assert p.returncode == 0, "Pantheon script exited with error code {}".format(
@@ -160,7 +224,7 @@ def test_run(flags, jobs, thread_id):
     )
 
     # Run analysis
-    analysis_cmd = [utils.meta["analyze_path"], "--data-dir={}".format(data_dir)]
+    analysis_cmd = [flags.analyze_path, "--data-dir={}".format(data_dir)]
     logging.info(
         "Thread {}, job {}: Running analysis on {}, cmd: {}".format(
             thread_id, job_id, data_dir, " ".join(analysis_cmd)
@@ -180,16 +244,14 @@ def test_run(flags, jobs, thread_id):
     )
 
 
-def run_pantheon(flags, jobs, num_threads, run_fn):
-    logging.info(
-        "Launching {} jobs over {} threads for {}.".format(
-            len(jobs), num_threads, flags.mode
-        )
-    )
+def run_pantheon(flags, num_threads, run_fn):
+    logging.info("Launching {} threads for {}.".format(num_threads, flags.mode))
 
     threads = []
-    for i in range(num_threads):
-        thread = threading.Thread(target=run_fn, args=(flags, jobs, i))
+    for actor_id in range(num_threads):
+        # An independent copy of the config is used in each thread. This is a safeguard
+        # against potential thread-safety issues in OmegaConf.
+        thread = threading.Thread(target=run_fn, args=(copy.deepcopy(flags), actor_id))
         thread.start()
         threads.append(thread)
         # Stagger the beginning of each thread to avoid some errors due to
@@ -201,29 +263,18 @@ def run_pantheon(flags, jobs, num_threads, run_fn):
     logging.info("Done with {}.".format(flags.mode))
 
 
-def get_pantheon_emulated_jobs():
-    cfg = utils.expt_cfg["emu"]
-    matrix = utils.expand_matrix(cfg["matrix"])
-
-    jobs = []
-    for mat_dict in matrix:
-        for job_id, job_cfg in enumerate(cfg["jobs"]):
-            cmd_tmpl = job_cfg["command"]
-            # 1. Expand macros
-            cmd_tmpl = utils.safe_format(cmd_tmpl, cfg["macros"])
-            # 2. Expand variables in mat_dict
-            cmd_tmpl = utils.safe_format(cmd_tmpl, mat_dict)
-            # 3. Expand meta
-            cmd_tmpl = utils.safe_format(cmd_tmpl, utils.meta)
-            jobs.append(dict(cfg=job_cfg, cmd_tmpl=cmd_tmpl, job_id=job_id))
-    return jobs
-
-
-def get_jobs_to_perform(job_ids, max_jobs):
+def get_jobs_to_perform(flags, job_ids, mode=None, actor_id=None):
     """Obtain the list of jobs to perform given the current settings"""
-    jobs = get_pantheon_emulated_jobs()
-
+    mode = flags.mode if mode is None else mode
     # Filter jobs.
+    if mode == "train":
+        if actor_id is None or actor_id < flags.num_actors_train:
+            jobs = flags.train_jobs.jobs
+        else:
+            jobs = flags.eval_jobs.jobs
+    else:
+        jobs = flags.eval_jobs.jobs
+    jobs = list(jobs.values())
     if job_ids:
         jobs = [jobs[job_id] for job_id in job_ids]
         logging.info(
@@ -232,9 +283,9 @@ def get_jobs_to_perform(job_ids, max_jobs):
     else:
         logging.info("Using all {} jobs.".format(len(jobs)))
 
-    if max_jobs > 0:
-        logging.info("Filtering a maximum of {} jobs.".format(max_jobs))
-        jobs = jobs[0:max_jobs]
+    if flags.max_jobs > 0 and flags.max_jobs < len(jobs):
+        logging.info("Filtering a maximum of {} jobs.".format(flags.max_jobs))
+        jobs = jobs[0 : flags.max_jobs]
 
     return jobs
 
@@ -261,7 +312,6 @@ def get_test_schemes(flags):
             "mvfst_rl",
             "mvfst_rl_fixed",
             "mvfst_rl_random",
-
             "bbr",
             "copa",
             "cubic",
@@ -319,22 +369,22 @@ def split_schemes(schemes):
     return all_schemes
 
 
-def update_cmd(cmd, flags, thread_id, job_id=None):
+def update_cmd(cmd, flags, actor_id, job_id):
     if flags.mode == "train":
         schemes = "mvfst_rl"
         run_times = 1
-        assert job_id is not None
     else:  # test mode
         schemes = " ".join(get_test_schemes(flags))
         run_times = flags.test_runs_per_job
-        assert job_id is None  # not currently supported in test mode
+        # In test mode we ignore the input job ID and force it to -1.
+        # This ensures that the model cannot use job-specific information.
         job_id = -1
 
     extra_sender_args = " ".join(
         [
             "--cc_env_mode={}".format(flags.cc_env_mode),
             "--cc_env_rpc_address={}".format(flags.server_address),
-            "--cc_env_actor_id={}".format(thread_id),
+            "--cc_env_actor_id={}".format(actor_id),
             "--cc_env_job_id={}".format(job_id),
             "--cc_env_model_file={}".format(flags.traced_model),
             "--cc_env_agg={}".format(flags.cc_env_agg),
@@ -370,7 +420,7 @@ def update_cmd(cmd, flags, thread_id, job_id=None):
             "-v={}".format(flags.loglevel),
         ]
     )
-    return shlex.split(cmd) + [
+    return cmd + [
         "--schemes={}".format(schemes),
         "--run-times={}".format(run_times),
         '--extra-sender-args="{}"'.format(extra_sender_args),
@@ -378,14 +428,14 @@ def update_cmd(cmd, flags, thread_id, job_id=None):
 
 
 def main(flags):
-    jobs = utils.get_jobs(flags)
 
     if flags.mode == "train":
-        # One thread / pantheon env per actor while training
+        # One thread / pantheon env per actor while training.
         num_threads = flags.num_actors
+        run_fn = train_run
     else:
-        # One thread per job to test
-        num_threads = len(jobs)
+        # One thread per job to test.
+        num_threads = utils.get_n_jobs(flags)
+        run_fn = test_run
 
-    run_fn = train_run if flags.mode == "train" else test_run
-    run_pantheon(flags, jobs, num_threads, run_fn)
+    run_pantheon(flags, num_threads, run_fn)

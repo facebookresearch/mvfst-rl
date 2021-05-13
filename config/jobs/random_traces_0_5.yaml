@@ -1,0 +1,21 @@
+defaults:
+    - base_jobs
+
+jobs:
+    #0
+    sampled_scenario:
+        delay: "${uniform_log_int: 1, 200, 70}"
+        uplink:
+            trace: >-
+               ${choice:
+               0.57mbps-poisson.trace,
+               2.64mbps-poisson.trace,
+               3.04mbps-poisson.trace,
+               100.42mbps.trace,
+               77.72mbps.trace,
+               114.68mbps.trace
+               }
+            trace_scaling_factor: "${choice: 1., ${uniform_log: 0.1, 10, 1}, [0.25, 0.75]}"
+            loss: "${choice: 0, ${uniform_log: 0.01, 0.1, 0.02}, [0.8, 0.2]}"
+            queue_type: droptail
+            queue_size_packets: "${uniform_log_int: 1, 1000, 100}"
