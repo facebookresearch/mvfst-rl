@@ -23,78 +23,55 @@ class SimpleNet(nn.Module):
         self,
         input_size: int,
         hidden_size: int,
+        task_obs_size: int,
         num_actions: int,
         use_lstm: bool = False,
-        n_train_jobs: Optional[int] = None,
-        use_job_id_in_actor: bool = False,
-        use_job_id_in_critic: bool = False,
+        use_reward: bool = True,
+        use_task_obs_in_actor: bool = False,
+        use_task_obs_in_critic: bool = False,
     ):
         super(SimpleNet, self).__init__()
         self.num_actions = num_actions
         self.use_lstm = use_lstm
-        # If provided, `n_train_jobs` is the total number of jobs (= different environments)
-        # this model is trained on. It is required to provide a one-hot vector of the
-        # corresponding size as input to the actor and/or critic (depending on the flags
-        # `use_job_id_in_{actor,critic}`).
-        # Note that if there is only one training job, it is ignored since there is no
-        # need to differentiate between multiple environments.
-        self.use_job_id_in_network_input = False
-        self.use_job_id_in_actor_head = False
-        self.use_job_id_in_critic_head = False
-        if use_job_id_in_actor or use_job_id_in_critic:
-            assert n_train_jobs is not None and n_train_jobs >= 1, n_train_jobs
-            self.n_train_jobs = 0 if n_train_jobs == 1 else n_train_jobs
-            if self.n_train_jobs > 0:
-                # If the job ID is provided as input to both actor and critic, then
-                # its one-hot representation is given as input to the first layer.
-                # Otherwise, it will be provided only to the actor or critic head.
-                if use_job_id_in_actor and use_job_id_in_critic:
-                    self.use_job_id_in_network_input = True
-                else:
-                    self.use_job_id_in_actor_head = use_job_id_in_actor
-                    self.use_job_id_in_critic_head = use_job_id_in_critic
+        self.use_reward = use_reward
+
+        self.use_task_obs_in_network_input = False
+        self.use_task_obs_in_actor_head = False
+        self.use_task_obs_in_critic_head = False
+        # If the task observation is provided as input to both actor and critic,
+        # then it is fed as input to the first layer.
+        # Otherwise, it will be provided only to the actor or critic head.
+        if use_task_obs_in_actor and use_task_obs_in_critic:
+            self.use_task_obs_in_network_input = True
         else:
-            self.n_train_jobs = 0  # not used
+            self.use_task_obs_in_actor_head = use_task_obs_in_actor
+            self.use_task_obs_in_critic_head = use_task_obs_in_critic
 
         # Feature extraction.
-        # The first layer's input size is decreased by 1 because we remove the integer
-        # representation of the job ID from the input.
         self.fc1 = nn.Linear(
-            input_size - 1 + self.n_train_jobs * self.use_job_id_in_network_input,
+            input_size + task_obs_size * self.use_task_obs_in_network_input,
             hidden_size,
         )
         self.fc2 = nn.Linear(hidden_size, hidden_size)
 
-        # FC output size + last reward.
-        core_output_size = self.fc2.out_features + 1
+        # FC output size + (optionally) last reward.
+        core_output_size = self.fc2.out_features + int(self.use_reward)
 
         if use_lstm:
             self.core = nn.LSTMCell(core_output_size, core_output_size)
 
         self.policy = nn.Linear(
-            core_output_size + self.n_train_jobs * self.use_job_id_in_actor_head,
+            core_output_size + task_obs_size * self.use_task_obs_in_actor_head,
             self.num_actions,
         )
         self.baseline = nn.Linear(
-            core_output_size + self.n_train_jobs * self.use_job_id_in_critic_head,
+            core_output_size + task_obs_size * self.use_task_obs_in_critic_head,
             1,
         )
 
-    def concat_to_job_id(self, tensor, job_id):
-        """Concatenate a 2D tensor with the one-hot encoding associated to `job_id`"""
-        one_hot = (
-            F.one_hot(
-                # We clamp the job ID to its target range. It is the responsibility
-                # of the caller to ensure this does not cause problems downstream.
-                # In particular this is useful for evaluation actors whose job ID
-                # may be >= the number of training jobs.
-                torch.clamp(job_id.flatten().long(), 0, self.n_train_jobs - 1),
-                self.n_train_jobs,
-            )
-            .type(tensor.dtype)
-            .to(tensor.device)
-        )
-        return torch.cat((tensor, one_hot), dim=1)
+    def concat_to_task_obs(self, tensor, task_obs):
+        """Concatenate a 2D tensor with the task observation"""
+        return torch.cat((tensor, task_obs.type(tensor.dtype).to(tensor.device)), dim=1)
 
     def initial_state(self, batch_size=1):
         # Always return a tuple of two tensors so torch script type-checking
@@ -107,30 +84,30 @@ class SimpleNet(nn.Module):
 
         return tuple(torch.zeros(batch_size, core_hidden_size) for _ in range(2))
 
-    def forward(self, last_actions, env_outputs, core_state, unroll=False):
+    def forward(self, last_actions, env_outputs, task_obs, core_state, unroll=False):
         if not unroll:
             # [T=1, B, ...].
-            env_outputs = nest.map(lambda t: t.unsqueeze(0), env_outputs)
+            task_obs, env_outputs = nest.map(lambda t: t.unsqueeze(0), (task_obs, env_outputs))
 
         observation, reward, done = env_outputs
 
         T, B, *_ = observation.shape
         x = torch.flatten(observation, 0, 1)  # Merge time and batch.
         x = x.view(T * B, -1)
+        task_obs = task_obs.view(T * B, -1)
 
-        # Separate the job ID from the rest of the observation.
-        job_id = x[:, -1]
-        x = x[:, 0:-1]
-
-        if self.use_job_id_in_network_input:
-            x = self.concat_to_job_id(x, job_id)
+        if self.use_task_obs_in_network_input:
+            x = self.concat_to_task_obs(x, task_obs)
 
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
 
-        # reward = torch.clamp(reward, -1, 1).view(T * B, 1).float()
-        reward = reward.view(T * B, 1).float()
-        core_input = torch.cat([x, reward], dim=1)
+        if self.use_reward:
+            # reward = torch.clamp(reward, -1, 1).view(T * B, 1).float()
+            reward = reward.view(T * B, 1).float()
+            core_input = torch.cat([x, reward], dim=1)
+        else:
+            core_input = x
 
         if self.use_lstm:
             core_input = core_input.view(T, B, -1)
@@ -150,8 +127,8 @@ class SimpleNet(nn.Module):
             core_output = core_input
 
         actor_input = (
-            self.concat_to_job_id(core_output, job_id)
-            if self.use_job_id_in_actor_head
+            self.concat_to_task_obs(core_output, task_obs)
+            if self.use_task_obs_in_actor_head
             else core_output
         )
         policy_logits = self.policy(actor_input)
@@ -160,8 +137,8 @@ class SimpleNet(nn.Module):
             action = torch.multinomial(F.softmax(policy_logits, dim=1), num_samples=1)
 
             critic_input = (
-                self.concat_to_job_id(core_output, job_id)
-                if self.use_job_id_in_critic_head
+                self.concat_to_task_obs(core_output, task_obs)
+                if self.use_task_obs_in_critic_head
                 else core_output
             )
             baseline = self.baseline(critic_input)

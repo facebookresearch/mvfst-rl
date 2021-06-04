@@ -16,14 +16,14 @@
 
 import copy
 import logging
-import torch
-import torch.multiprocessing as mp
 import os
 import shutil
 
 from pathlib import Path
 
 import hydra
+import torch
+import torch.multiprocessing as mp
 
 from train import config, learner, pantheon_env, utils
 from train.constants import CONF_ROOT, THIRD_PARTY_ROOT
@@ -159,6 +159,8 @@ def train(flags):
             )
         )
 
+        job_info_queue = mp.Queue()
+
         stop_event.append(mp.Event())
         learner_proc.append(
             mp.Process(
@@ -169,12 +171,13 @@ def train(flags):
                     barrier=barrier,
                     gossip_buffer=shared_gossip_buffer,
                     stop_event=stop_event[-1],
+                    job_info_queue=job_info_queue,
                 ),
                 daemon=False,
             )
         )
         pantheon_proc.append(
-            mp.Process(target=pantheon_env.main, args=(flags,), daemon=False)
+            mp.Process(target=pantheon_env.main, args=(flags, job_info_queue), daemon=False)
         )
         learner_proc[rank].start()
         pantheon_proc[rank].start()
@@ -214,7 +217,8 @@ def test(flags):
     flags.cc_env_mode = "local"
 
     logging.info("Starting local test, logdir={}".format(flags.logdir))
-    pantheon_proc = mp.Process(target=pantheon_env.main, args=(flags,), daemon=False)
+    job_info_queue = None
+    pantheon_proc = mp.Process(target=pantheon_env.main, args=(flags, job_info_queue), daemon=False)
     pantheon_proc.start()
     pantheon_proc.join()
     logging.info("Done local test")

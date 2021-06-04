@@ -37,7 +37,7 @@ from torch.utils.tensorboard import SummaryWriter
 from train import state, utils
 from train.constants import TORCHBEAST_ROOT, UDP_SEND_PACKET_LEN
 from train.models import SimpleNet
-from train.utils import StrEnum, get_jobs, get_n_jobs
+from train.utils import JobInfo, StrEnum, get_jobs, get_n_jobs
 
 sys.path.append(TORCHBEAST_ROOT)
 
@@ -74,6 +74,9 @@ class ConfigLearner:
     unroll_length: int = 80
     # Whether to use LSTM in agent model.
     use_lstm: bool = True
+    # Whether to use the reward in the model. This should only be enabled if the
+    # reward is not based on privileged information.
+    use_reward: bool = True
     # Initial random seed for torch.random.
     seed: int = 1234
     # If True, then we pretend the episode would continue after it ended,
@@ -81,10 +84,10 @@ class ConfigLearner:
     end_of_episode_bootstrap: bool = False
     # When training on more than one job (from `experiments.yml`), these flags
     # indicate whether the actor / critic should have access to the job ID.
-    # Be careful that setting `use_job_id_in_actor=True` is "cheating", and is
+    # Be careful that setting `use_task_obs_in_actor=True` is "cheating", and is
     # not supported by evaluation actors.
-    use_job_id_in_actor: bool = False
-    use_job_id_in_critic: bool = False
+    use_task_obs_in_actor: bool = False
+    use_task_obs_in_critic: bool = False
 
     # GALA settings.
 
@@ -209,8 +212,10 @@ def compute_policy_gradient_loss(logits, actions, advantages):
 def compute_metrics(
     flags,
     learner_outputs,
+    job_ids,
     actor_outputs,
     env_outputs,
+    task_obs,
     last_actions,
     reward_stats=None,
     end_of_episode_bootstrap=False,
@@ -223,9 +228,11 @@ def compute_metrics(
         * "action": (T + 1, N)
         * "baseline": (T + 1, N)
         * "policy_logits": (T + 1, N, num_actions)
+    :param job_ids: A tensor (T + 1, N) with job IDs.
     :param actor_outputs: Similar to `learner_outputs`.
     :param env_outputs: A triplet of observation (T + 1, N, obs_dim), reward
         (T + 1, N) and done (T + 1, N) tensors.
+    :param task_obs: A tensor (T + 1, N, task_obs_size) with task observations.
     :param last_actions: not used
     :param reward_stats: Must be provided when reward normalization is enabled.
         This dictionary holds statistics on the observed rewards.
@@ -250,8 +257,7 @@ def compute_metrics(
         raise NotImplementedError(flags.reward_clipping)
 
     if flags.reward_normalization:
-        train_job_id = env_outputs[0][1:][:, :, -1].long()
-        normalize_rewards(flags, train_job_id, rewards, reward_stats)
+        normalize_rewards(flags, job_ids, rewards, reward_stats)
 
     discounts = (~done).float() * flags.discounting
 
@@ -521,11 +527,12 @@ def make_train_model(flags, device=None):
     model = SimpleNet(
         input_size=flags.observation_length,
         hidden_size=flags.hidden_size,
+        task_obs_size=flags.task_obs_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
-        n_train_jobs=get_n_jobs(flags, mode="train"),
-        use_job_id_in_actor=flags.use_job_id_in_actor,
-        use_job_id_in_critic=flags.use_job_id_in_critic,
+        use_reward=flags.use_reward,
+        use_task_obs_in_actor=flags.use_task_obs_in_actor,
+        use_task_obs_in_critic=flags.use_task_obs_in_critic,
     )
     return model if device is None else model.to(device)
 
@@ -564,7 +571,14 @@ def log(flags, _state={}, **fields):  # noqa: B008
         writer.writerow(fields)
 
 
-def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=None):
+def learner_loop(
+    flags,
+    rank=0,
+    barrier=None,
+    gossip_buffer=None,
+    stop_event=None,
+    job_info_queue=None,
+):
     if flags.num_actors < flags.batch_size:
         logging.warn("Batch size is larger than number of actors.")
     assert (
@@ -580,7 +594,7 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
         # This is a safety assert that might be disabled in the future if required
         # (it would be ok if the training and evaluation jobs were the same).
         assert (
-            not flags.use_job_id_in_actor
+            not flags.use_task_obs_in_actor
         ), "evaluation actors cannot be used if the job ID must be provided to the actor"
     if flags.logdir:
         log_file_path = os.path.join(flags.logdir, "logs.tsv")
@@ -597,6 +611,8 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             "of throughput and delay statistics through the states assumes that we are provided "
             "summary statistics, and would need to be updated to work without."
         )
+
+    task_obs_size = flags.task_obs_size
 
     # Using maxsize=1 is meant to slow down the inference threads when learning is too
     # slow to catch up. This avoids a situation where inputs to the learner might start
@@ -615,11 +631,13 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
     dummy_env_output = nest.map(
         lambda a: torch.from_numpy(np.array(a)), dummy_env_output
     )
+    dummy_task_obs = torch.zeros(task_obs_size, dtype=torch.float32)
 
     with torch.no_grad():
         dummy_model_output, _ = model(
             last_actions=torch.zeros([1], dtype=torch.int64),
             env_outputs=nest.map(lambda t: t.unsqueeze(0), dummy_env_output),
+            task_obs=dummy_task_obs.unsqueeze(0),
             core_state=model.initial_state(1),
         )
         dummy_model_output = nest.map(lambda t: t.squeeze(0), dummy_model_output)
@@ -637,6 +655,9 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             delay_mean=torch.zeros([flags.num_actors]),
             throughput_mean=torch.zeros([flags.num_actors]),
             job_id=torch.zeros([flags.num_actors], dtype=torch.int64),
+            task_obs=torch.zeros(
+                [flags.num_actors, task_obs_size], dtype=torch.float32
+            ),
         )
     )
 
@@ -655,8 +676,10 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
     num_actors_train = flags.num_actors_train  # precompute for efficiency
     rollouts = Rollouts(
         dict(
+            job_ids=torch.zeros((), dtype=torch.int64),
             last_actions=torch.zeros((), dtype=torch.int64),
             env_outputs=dummy_env_output,
+            task_obs=dummy_task_obs,
             actor_outputs=dummy_model_output,
         ),
         unroll_length=flags.unroll_length,
@@ -664,9 +687,15 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
         num_actors=num_actors_train,
     )
 
+    # Map a pair (actor_id, job_count) to the `JobInfo` for this job.
+    # Note: there is a risk of memory leak since currently we never delete
+    # from this dictionary. However, this is not a major concern at this time
+    # since the data associated to each job is quite small.
+    all_job_info = {}
+
     server = torchbeast.Server(flags.server_address, max_parallel_calls=4)
 
-    def inference(actor_ids, run_ids, env_outputs):
+    def inference(actor_ids, run_ids, job_counts, env_outputs):
         """
         Compute actions for a subset of actors, based on their observations.
 
@@ -677,6 +706,8 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             fresh env is expected to provide a new run ID to be sure we do
             not accidentally re-use outdated data). Note that this mechanism
             is not actually needed by the current RL congestion control env.
+        :param job_counts: 1D tensor with the counters associated to each job.
+            It is used to fetch the information associated to the job.
         :param env_outputs: Tuple of observation (N x obs_dim), reward (N) and
             done (N) tensors, with N the size of `actor_ids`.
         """
@@ -710,6 +741,11 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
 
         # Update logging stats at end of episode.
         done_ids = actor_ids[done]
+        # Note that it is important to provide `job_id` and `task_obs` even if we do not
+        # want to change them. This is because the update in `StructuredBuffer.add()`
+        # assumes that the input data contains all fields.
+        task_obs = torch.zeros((len(obs), task_obs_size), dtype=torch.float32)
+        job_id = torch.zeros(len(obs), dtype=torch.int64)
         if done_ids.numel():
             # Do not log stats of zero-length episodes (typically these should
             # only happen on the very first episode, due to the `done` flag
@@ -722,15 +758,23 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             # Clear reward for agents that are done: it is meaningless as it is obtained with
             # the first observation, before the agent got a chance to take any action.
             reward[done] = 0.0
-            # We only update the `job_id` field once (when an episode starts, which
-            # is when `done` is True). This is because it remains the same throughout the
-            # whole episode.
-            job_id = (obs[:, -1] * done).long()
-        else:
-            # Note that it is important to provide `job_id` even if we do not want to change
-            # it. This is because the update in `StructuredBuffer.add()` assumes that the
-            # input data contains all fields.
-            job_id = torch.zeros(len(obs), dtype=torch.int64)
+            # We only update the `job_id` and `task_obs` fields once (when an episode
+            # starts, which is when `done` is True). This is because they remain the same
+            # throughout the whole episode.
+            for idx, (actor_id, job_count, is_done) in enumerate(
+                zip(actor_ids, job_counts, done)
+            ):
+                if not is_done:
+                    continue
+                job_info = get_job_info(
+                    actor_id=actor_id.item(),
+                    job_count=job_count.item(),
+                    all_job_info=all_job_info,
+                    job_info_queue=job_info_queue,
+                )
+                job_id[idx] = job_info.job_id
+                task_obs[idx] = job_info.task_obs
+
         actor_infos.add(
             actor_ids,
             dict(
@@ -745,16 +789,19 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
                 * flags.cc_env_norm_bytes
                 / 1024 ** 2,  # convert to Mbytes/s
                 job_id=job_id,
+                task_obs=task_obs,
             ),
         )
+        current_actor_info = actor_infos.get(actor_ids)
 
         last_actions = actions.get(actor_ids)
         prev_agent_states = agent_states.get(actor_ids)
+        current_task_obs = current_actor_info["task_obs"]
 
         actor_outputs, new_agent_states = model(
             *nest.map(
                 lambda t: t.to(flags.inference_device),
-                (last_actions, env_outputs, prev_agent_states),
+                (last_actions, env_outputs, current_task_obs, prev_agent_states),
             )
         )
         actor_outputs, new_agent_states = nest.map(
@@ -764,8 +811,10 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
         is_train_actor = actor_ids < num_actors_train
         if is_train_actor.any():
             timestep = dict(
+                job_ids=current_actor_info["job_id"],
                 last_actions=last_actions,
                 env_outputs=env_outputs,
+                task_obs=current_task_obs,
                 actor_outputs=actor_outputs,
             )
             train_actor_ids = actor_ids
@@ -820,6 +869,40 @@ def learner_loop(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=Non
             unroll_queue.close()
             server.stop()
         # Need to shut down executor after queue is closed.
+
+
+def get_job_info(actor_id, job_count, all_job_info, job_info_queue):
+    """Obtain the job info associated to a given actor_id & job_count"""
+    timeout = time.perf_counter() + 1
+    key = (actor_id, job_count)
+    while True:
+        try:
+            return all_job_info[key]
+        except KeyError:
+            if time.perf_counter() > timeout:
+                raise RuntimeError(
+                    f"Timeout while trying to get task state for {actor_id} / {job_count} "
+                )
+            update_job_info(all_job_info, job_info_queue)
+
+
+def update_job_info(all_job_info, job_info_queue):
+    """
+    Get all job information from `job_info_queue` and store them into `all_job_info`.
+
+    This function must remain thread-safe.
+    """
+    while True:
+        try:
+            actor_id, job_id, job_count, task_obs = job_info_queue.get_nowait()
+        except queue.Empty:
+            return
+        key = (actor_id, job_count)
+        # There is a small risk of race condition on this assert (the key may be added by
+        # another thread after the assert), but it does not matter since this is only to
+        # detect potential bugs.
+        assert key not in all_job_info
+        all_job_info[key] = JobInfo(job_id=job_id, task_obs=task_obs)
 
 
 def learn(
@@ -974,12 +1057,12 @@ def learn(
                     job_type = "eval"
 
                 if tb_writer is not None:
-                    tb_writer.add_scalar("actor/episode_steps", episode_step, steps)
-                    tb_writer.add_scalar("actor/episode_return", episode_return, steps)
-                    tb_writer.add_scalar("actor/cwnd_mean", cwnd_mean, steps)
-                    tb_writer.add_scalar("actor/delay_mean", delay_mean, steps)
+                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/episode_steps", episode_step, steps)
+                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/episode_return", episode_return, steps)
+                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/cwnd_mean", cwnd_mean, steps)
+                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/delay_mean", delay_mean, steps)
                     tb_writer.add_scalar(
-                        "actor/throughput_mean", throughput_mean, steps
+                        f"{job_type}/{job_id}/actor/throughput_mean", throughput_mean, steps
                     )
 
                 log(
@@ -1048,6 +1131,7 @@ def learn(
         learner_outputs, _ = model(
             batch["last_actions"],
             batch["env_outputs"],
+            batch["task_obs"],
             initial_agent_state,
             unroll=True,
         )
@@ -1131,6 +1215,7 @@ def trace_model(flags, model):
                 torch.rand(1),  # reward: [B]
                 torch.BoolTensor(1),  # done: [B]
             ),
+            torch.rand(1, flags.task_obs_size),  # task observation: [B, OBS_DIM]
             model.initial_state(),  # core_state: [B, HIDDEN_DIM]
         ),
     )
@@ -1146,7 +1231,14 @@ def trace_model(flags, model):
         pickle.dump(vars(flags), f, 2)
 
 
-def main(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=None):
+def main(
+    flags,
+    rank=0,
+    barrier=None,
+    gossip_buffer=None,
+    stop_event=None,
+    job_info_queue=None,
+):
     try:
         return _main(
             flags=flags,
@@ -1154,13 +1246,21 @@ def main(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=None):
             barrier=barrier,
             gossip_buffer=gossip_buffer,
             stop_event=stop_event,
+            job_info_queue=job_info_queue,
         )
     finally:  # make sure `stop_event` is set when the process exits
         if stop_event is not None:
             stop_event.set()
 
 
-def _main(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=None):
+def _main(
+    flags,
+    rank=0,
+    barrier=None,
+    gossip_buffer=None,
+    stop_event=None,
+    job_info_queue=None,
+):
     torch.random.manual_seed(flags.seed)
 
     if flags.logdir:
@@ -1194,7 +1294,14 @@ def _main(flags, rank=0, barrier=None, gossip_buffer=None, stop_event=None):
             json.dump(metadata, f, indent=2, sort_keys=True)
 
     if flags.mode == "train":
-        learner_loop(flags, rank, barrier, gossip_buffer, stop_event)
+        learner_loop(
+            flags=flags,
+            rank=rank,
+            barrier=barrier,
+            gossip_buffer=gossip_buffer,
+            stop_event=stop_event,
+            job_info_queue=job_info_queue,
+        )
     elif flags.mode == "trace":
         trace(flags)
     else:

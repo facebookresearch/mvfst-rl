@@ -1,10 +1,12 @@
+# Similar to `random_traces_0_5.yaml` but with narrower random distributions.
+
 defaults:
     - base_jobs
 
 jobs:
     #0
     sampled_scenario:
-        delay: "${uniform_log_int: 5, 200, 70}"
+        delay: "${uniform_log_int: 20, 150, 50}"
         uplink:
             trace: >-
                ${choice:
@@ -15,7 +17,7 @@ jobs:
                77.72mbps.trace,
                114.68mbps.trace
                }
-            trace_scaling_factor: "${choice: 1., ${uniform_log: 0.5, 2, 1}, [0.1, 0.9]}"
-            loss: "${choice: 0, ${uniform_log: 0.01, 0.1, 0.02}, [0.8, 0.2]}"
+            trace_scaling_factor: "${choice: 1., ${uniform_log: 0.9, 1.1, 0.99}, [0.25, 0.75]}"
+            loss: "${choice: 0, ${uniform_log: 0.01, 0.06, 0.02}, [0.8, 0.2]}"
             queue_type: droptail
-            queue_size_packets: "${uniform_log_int: 10, 1000, 100}"
+            queue_size_packets: "${uniform_log_int: 10, 500, 100}"

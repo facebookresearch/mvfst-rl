@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 TPERF_SETTINGS = [
     "cc_env_mode",
     "cc_env_model_file",
-    "cc_env_job_id",
+    "cc_env_job_count",
 ]
 
 # These arguments are to be read from the experiment training configuration, to be
@@ -170,7 +170,7 @@ def main() -> int:
     tperf_args.update(
         {
             "congestion": "rl",
-            "cc_env_job_id": -1,
+            "cc_env_job_count": -1,
             "cc_env_mode": "local",
             "cc_env_model_file": str(traced_path),
             "cc_env_actions": get_cc_env_actions(flags["cc_env_actions"]),

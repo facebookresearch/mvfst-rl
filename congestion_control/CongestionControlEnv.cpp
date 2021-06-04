@@ -122,7 +122,7 @@ void CongestionControlEnv::handleStates() {
   ++rewardCount_;
   rewardSum_ += reward;
   if (rewardCount_ % 10 == 0) {
-    VLOG(1) << __func__ << ": for jobId= " << cfg_.jobId
+    VLOG(1) << __func__ << ": for jobCount= " << cfg_.jobCount
             << ", after " << rewardCount_
             << " steps, avg reward = " << (rewardSum_ / rewardCount_);
   }
@@ -244,9 +244,10 @@ void CongestionControlEnv::Observation::toTensor(torch::Tensor &tensor) const {
   CHECK_EQ(history.size(), cfg_.historySize);
 
   // Dim per history = len(one-hot actions) + 1 (cwnd).
-  // Total dim = flattened state dim + history dim + 1 (job ID)
+  // Total dim = flattened state dim + history dim
+  // (must be kept in synch with `utils.get_observation_length()`)
   uint32_t historyDim = cfg_.actions.size() + 1;
-  uint32_t dim = states.size() * states[0].size() + history.size() * historyDim + 1;
+  uint32_t dim = states.size() * states[0].size() + history.size() * historyDim;
 
   tensor.resize_({dim});
   auto tensor_a = tensor.accessor<float, 1>();
@@ -266,9 +267,6 @@ void CongestionControlEnv::Observation::toTensor(torch::Tensor &tensor) const {
     }
     tensor_a[x++] = h.cwnd;
   }
-
-  // Append the job ID (IMPORTANT: it must remain at the end of the tensor)
-  tensor_a[x++] = cfg_.jobId;
 
   CHECK_EQ(x, dim);
 }

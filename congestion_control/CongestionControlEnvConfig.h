@@ -57,8 +57,8 @@ struct CongestionControlEnvConfig {
   // connections to RL server.
   int64_t actorId{0};
 
-  // Index of the current job in the list of active jobs. -1 if undefined.
-  int64_t jobId{-1};
+  // Job counter during training. -1 if undefined.
+  int64_t jobCount{-1};
 
   Aggregation aggregation{Aggregation::TIME_WINDOW};
   std::chrono::milliseconds windowDuration{100}; // Time window duration

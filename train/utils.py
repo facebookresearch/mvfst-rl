@@ -14,14 +14,19 @@ import string
 import sys
 import time
 
+from collections import namedtuple
 from dataclasses import field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Generator
+from typing import Generator, List
 
 import numpy as np
 import psutil
+
+
+# Used to store information about jobs.
+JobInfo = namedtuple("JobInfo", ["job_id", "task_obs"])
 
 
 class _StrEnum(str, Enum):
@@ -256,8 +261,17 @@ def get_observation_length(history_size, num_actions):
     # The observation contains:
     # - state summary stats (5 * 20) (5 because sum / mean / std / min /max)
     # - history_size * (one-hot actions + cwnd)
-    # - job ID
-    return 100 + history_size * (num_actions + 1) + 1
+    # This formula must be kept in synch with the one used in
+    #   CongestionControlEnv::Observation::toTensor()
+    return 100 + history_size * (num_actions + 1)
+
+
+def make_one_hot(i: int, n: int) -> List[int]:
+    """Return a one-hot list of size `n` with a one at position `i`"""
+    assert n > 1, "you probably do not want a one-hot of size <= 1"
+    one_hot = [0] * n
+    one_hot[i] = 1
+    return one_hot
 
 
 def str2bool(v):

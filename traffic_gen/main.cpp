@@ -30,8 +30,8 @@ DEFINE_string(
 DEFINE_int64(cc_env_actor_id, 0,
              "For use in training to uniquely identify an actor across "
              "episodic connections to RL server.");
-DEFINE_int64(cc_env_job_id, -1,
-             "Index of the current job in the list of active jobs. -1 if undefined.");
+DEFINE_int64(cc_env_job_count, -1,
+             "Job counter during training. -1 if undefined.");
 DEFINE_string(cc_env_model_file, "traced_model.pt",
               "PyTorch traced model file for local mode");
 DEFINE_string(
@@ -106,7 +106,7 @@ makeRLCongestionControllerFactory() {
   cfg.modelFile = FLAGS_cc_env_model_file;
   cfg.rpcAddress = FLAGS_cc_env_rpc_address;
   cfg.actorId = FLAGS_cc_env_actor_id;
-  cfg.jobId = FLAGS_cc_env_job_id;
+  cfg.jobCount = FLAGS_cc_env_job_count;
 
   if (FLAGS_cc_env_agg == "time") {
     cfg.aggregation = Config::Aggregation::TIME_WINDOW;

@@ -8,10 +8,10 @@
 #
 
 import copy
+import itertools
 import logging
 import os
 import subprocess
-import random
 import shutil
 import threading
 import time
@@ -19,16 +19,53 @@ import time
 from dataclasses import dataclass
 from os import path
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import List
 
+import numpy as np
+import torch
 from omegaconf import OmegaConf
 
 from train import resolvers, utils
 from train.constants import PANTHEON_ROOT, TRACES_ROOT
-from train.env_spec import ConfigEnvSpec, ConfigJobs, get_env_cmd, set_scaled_traces
-from train.utils import StrEnum, default_empty_dict, default_empty_list, default_list
+from train.env_spec import ConfigJobs, get_env_cmd, set_scaled_traces
+from train.utils import (
+    StrEnum,
+    default_empty_list,
+    default_list,
+    get_n_jobs,
+    make_one_hot,
+)
 
 logging.basicConfig(level=logging.INFO)
+
+
+# Map a trace to its index (used to define the one-hot representing the trace).
+# WARNING: this dictionary should be kept in synch with the list of traces
+# that may be randomly sampled (ideally it would be defined dynamically from
+# this list).
+TRACE_TO_ID = {
+    k: i
+    for i, k in enumerate(
+        [
+            "0.57mbps-poisson.trace",
+            "2.64mbps-poisson.trace",
+            "3.04mbps-poisson.trace",
+            "100.42mbps.trace",
+            "77.72mbps.trace",
+            "114.68mbps.trace",
+        ]
+    )
+}
+
+# Map a trace to the (approximate) max throughput it can sustain, in MBytes/s.
+TRACE_TO_MAX_THROUGHPUT = {
+    "0.57mbps-poisson.trace": 0.07125,
+    "2.64mbps-poisson.trace": 0.33,
+    "3.04mbps-poisson.trace": 0.38,
+    "100.42mbps.trace": 12.5525,
+    "77.72mbps.trace": 9.715,
+    "114.68mbps.trace": 14.335,
+}
 
 
 @dataclass
@@ -72,6 +109,10 @@ class ConfigEnv:
     # actors will also change the generated jobs (each actor generates its own
     # jobs, from a unique seed derived from `jobs_seed` and the actor ID).
     jobs_seed: int = 123
+    # Size of the task observation.
+    # It is currently hardcoded in the config and must be kept in synch with the
+    # implementation of `get_task_obs()`.
+    task_obs_size: int = 12
     # CongestionControlEnvConfig::Mode. Local only support testing.
     cc_env_mode: StrEnum("CCEnvMode", "local, remote") = "remote"
     # tate aggregation type.
@@ -134,7 +175,7 @@ def get_actor_data(flags, actor_id):
     return jobs, pantheon_env
 
 
-def get_job_cmd(flags, jobs, job_id, actor_id, data_dir):
+def get_job_cmd(flags, jobs, job_id, actor_id, data_dir, job_count=-1, job_info_queue=None):
     """Return the command line associate to a given job in the list of all jobs"""
     # Select the desired job and resolve its parameters (=> sampling random numbers).
     job = copy.deepcopy(jobs[job_id])
@@ -143,15 +184,50 @@ def get_job_cmd(flags, jobs, job_id, actor_id, data_dir):
     # Generate the uplink & donwlink scaled traces (if needed).
     set_scaled_traces(job, data_dir)
 
+    if job_info_queue is not None:
+        # Obtain and store the job info in the queue: it will be retrieved by the learner.
+        assert job_count >= 0
+        task_obs = get_task_obs(flags, job)
+        job_info_queue.put((actor_id, job_id, job_count, task_obs))
+
     # Generate the command line (expanding the data directory in the template).
     cmd_tmpl = get_env_cmd(flags, job)
     cmd = [utils.safe_format(c, {"data_dir": data_dir}) for c in cmd_tmpl]
-    cmd = update_cmd(cmd, flags, actor_id, job_id)
+    cmd = update_cmd(cmd=cmd, flags=flags, actor_id=actor_id, job_count=job_count)
 
     return cmd
 
 
-def train_run(flags, thread_id):
+def get_task_obs(flags, job):
+    """Return a job's task state (i.e., its parameters)"""
+    # Currently we assume the downlink is the same as the uplink.
+    assert job.downlink.scaled_trace == job.uplink.scaled_trace
+
+    # Include a one-hot of the job ID (if needed).
+    n_train_jobs = get_n_jobs(flags, mode="train")
+    job_id_state = make_one_hot(job.job_id, n_train_jobs) if n_train_jobs > 1 else []
+
+    trace_id = TRACE_TO_ID[job.uplink.trace]
+    return torch.tensor(
+        job_id_state
+        + make_one_hot(trace_id, len(TRACE_TO_ID))
+        + [
+            np.log(
+                # This gives an estimate of the max throughput possible.
+                TRACE_TO_MAX_THROUGHPUT[job.uplink.trace]
+                * job.uplink.trace_scaling_factor
+            ),
+            np.log(job.delay),
+            np.log(job.uplink.trace_scaling_factor),
+            float(job.uplink.loss > 0),
+            np.log(job.uplink.loss) if job.uplink.loss > 0 else 0,
+            np.log(job.uplink.queue_size_packets),
+        ],
+        dtype=torch.float32,
+    )
+
+
+def train_run(flags, job_info_queue, thread_id):
     """
     Each pantheon job runs for a default of 30s (max 60s allowed).
     We treat each such run as a separate episode for training and run
@@ -164,7 +240,7 @@ def train_run(flags, thread_id):
     job_ids = utils.balanced_randints(resolvers.thread_data.rng, len(jobs))
 
     episode = 0
-    while True:
+    for job_count in itertools.count():
         # Pick a random job to run.
         job_id = next(job_ids)
         data_dir = (
@@ -172,7 +248,13 @@ def train_run(flags, thread_id):
         )
 
         cmd = get_job_cmd(
-            flags, jobs=jobs, job_id=job_id, actor_id=thread_id, data_dir=data_dir
+            flags,
+            jobs=jobs,
+            job_id=job_id,
+            actor_id=thread_id,
+            data_dir=data_dir,
+            job_count=job_count,
+            job_info_queue=job_info_queue,
         )
 
         # Launch the job.
@@ -198,14 +280,17 @@ def train_run(flags, thread_id):
         utils.delete_dir(data_dir, max_tries=3, sleep_time=2)
 
 
-def test_run(flags, thread_id):
+def test_run(flags, job_info_queue, thread_id):
     """
     Thread i runs jobs[i % len(jobs)] flags.test_runs_per_job times.
+
+    NB: currently `test_run` does not fill `job_info_queue` (it assumes that it is
+    not needed at test time).
     """
     jobs, pantheon_env = get_actor_data(flags, actor_id=thread_id)
 
     job_id = thread_id % len(jobs)
-    data_dir = path.join(flags.logdir, "test_expt{}".format(job_id))
+    data_dir = Path(flags.logdir) / f"test_expt{job_id}"
 
     cmd = get_job_cmd(
         flags, jobs=jobs, job_id=job_id, actor_id=thread_id, data_dir=data_dir
@@ -224,7 +309,7 @@ def test_run(flags, thread_id):
     )
 
     # Run analysis
-    analysis_cmd = [flags.analyze_path, "--data-dir={}".format(data_dir)]
+    analysis_cmd = [flags.analyze_path, f"--data-dir={data_dir}"]
     logging.info(
         "Thread {}, job {}: Running analysis on {}, cmd: {}".format(
             thread_id, job_id, data_dir, " ".join(analysis_cmd)
@@ -234,8 +319,8 @@ def test_run(flags, thread_id):
     p.wait()
 
     shutil.copyfile(
-        path.join(data_dir, "pantheon_summary_mean.pdf"),
-        path.join(flags.logdir, "test_expt{}.pdf".format(job_id)),
+        data_dir / "pantheon_summary_mean.pdf",
+        Path(flags.logdir) / f"test_expt{job_id}.pdf",
     )
     logging.info(
         "Test run finished for thread {}, job {}. Results in {}.".format(
@@ -244,14 +329,16 @@ def test_run(flags, thread_id):
     )
 
 
-def run_pantheon(flags, num_threads, run_fn):
+def run_pantheon(flags, job_info_queue, num_threads, run_fn):
     logging.info("Launching {} threads for {}.".format(num_threads, flags.mode))
 
     threads = []
     for actor_id in range(num_threads):
         # An independent copy of the config is used in each thread. This is a safeguard
         # against potential thread-safety issues in OmegaConf.
-        thread = threading.Thread(target=run_fn, args=(copy.deepcopy(flags), actor_id))
+        thread = threading.Thread(
+            target=run_fn, args=(copy.deepcopy(flags), job_info_queue, actor_id)
+        )
         thread.start()
         threads.append(thread)
         # Stagger the beginning of each thread to avoid some errors due to
@@ -369,23 +456,23 @@ def split_schemes(schemes):
     return all_schemes
 
 
-def update_cmd(cmd, flags, actor_id, job_id):
+def update_cmd(cmd, flags, actor_id, job_count):
     if flags.mode == "train":
         schemes = "mvfst_rl"
         run_times = 1
     else:  # test mode
         schemes = " ".join(get_test_schemes(flags))
         run_times = flags.test_runs_per_job
-        # In test mode we ignore the input job ID and force it to -1.
+        # In test mode we ignore the input job counter and force it to -1.
         # This ensures that the model cannot use job-specific information.
-        job_id = -1
+        job_count = -1
 
     extra_sender_args = " ".join(
         [
             "--cc_env_mode={}".format(flags.cc_env_mode),
             "--cc_env_rpc_address={}".format(flags.server_address),
             "--cc_env_actor_id={}".format(actor_id),
-            "--cc_env_job_id={}".format(job_id),
+            "--cc_env_job_count={}".format(job_count),
             "--cc_env_model_file={}".format(flags.traced_model),
             "--cc_env_agg={}".format(flags.cc_env_agg),
             "--cc_env_time_window_ms={}".format(flags.cc_env_time_window_ms),
@@ -427,7 +514,7 @@ def update_cmd(cmd, flags, actor_id, job_id):
     ]
 
 
-def main(flags):
+def main(flags, job_info_queue):
 
     if flags.mode == "train":
         # One thread / pantheon env per actor while training.
@@ -438,4 +525,4 @@ def main(flags):
         num_threads = utils.get_n_jobs(flags)
         run_fn = test_run
 
-    run_pantheon(flags, num_threads, run_fn)
+    run_pantheon(flags, job_info_queue, num_threads, run_fn)
