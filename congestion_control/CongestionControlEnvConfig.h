@@ -1,11 +1,11 @@
 /*
-* Copyright (c) Facebook, Inc. and its affiliates.
-* All rights reserved.
-*
-* This source code is licensed under the license found in the
-* LICENSE file in the root directory of this source tree.
-*
-*/
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
 #pragma once
 
 #include <chrono>
@@ -27,6 +27,17 @@ struct CongestionControlEnvConfig {
     RANDOM,    // Simple env that takes random actions (for testing)
     FIXED,     // Simple env that attempts to reach a fixed cwnd target (for
                // testing)
+  };
+
+  // Reward formula (see pantheon_env.py for details).
+  enum class RewardFormula : uint8_t {
+    LINEAR = 0,
+    LOG_RATIO,
+    MIN_THROUGHPUT,
+    TARGET_CWND,
+    TARGET_CWND_SHAPED,
+    HIGHER_IS_BETTER,
+    ABOVE_CWND,
   };
 
   // Type of aggregation to group state updates
@@ -79,14 +90,19 @@ struct CongestionControlEnvConfig {
       {ActionOp::ADD, 10}, {ActionOp::MUL, 2},
   };
 
-  // Multipliers for reward components
-  bool rewardLogRatio{false};
+  // Parameters for reward components
+  RewardFormula rewardFormula{RewardFormula::LOG_RATIO};
+  float uplinkBandwidth{0.0};
+  float delayOffset{0.0};
   float throughputFactor{0.1};
   float throughputLogOffset{1.0};
   float delayFactor{0.01};
   float delayLogOffset{1.0};
   float packetLossFactor{0.0};
   float packetLossLogOffset{1.0};
+  float minThroughputRatio{0.9};
+  float nPacketsOffset{1.0};
+  float targetCwnd{0.0};
 
   // Whether to use max delay within a window in reward (avg otherwise)
   bool maxDelayInReward{true};

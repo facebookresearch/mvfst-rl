@@ -9,6 +9,7 @@ Utility functions to handle the input state.
 """
 
 from enum import Enum, auto
+from typing import Any, List, Union
 
 import torch
 
@@ -58,6 +59,29 @@ OFFSET_MEAN = N
 OFFSET_STD = N * 2
 OFFSET_MIN = N * 3
 OFFSET_MAX = N * 4
+OFFSET_END = N * 5  # end of summary statistics
+
+
+def get_indices(fields: List[Field]) -> torch.Tensor:
+    """
+    Return all indices associated to the given fields.
+
+    This includes indices associate to all summary statistics (sum, mean, etc.)
+    """
+    indices = [
+        offset + field.value
+        for field in fields
+        for offset in [OFFSET_SUM, OFFSET_MEAN, OFFSET_STD, OFFSET_MIN, OFFSET_MAX]
+    ]
+    return torch.tensor(indices, dtype=torch.int64)
+
+
+def get_indices_except(fields: Union[Field, List[Field]]) -> torch.Tensor:
+    """Same as `get_indices()` but to *exclude* a list of fields"""
+    if isinstance(fields, Field):
+        fields = [fields]
+    skip = set(f.value for f in fields)
+    return get_indices(fields=[f for f in Field if f.value not in skip])
 
 
 def get_from_state(state, field, offset, dim=0):
@@ -100,3 +124,22 @@ def get_min(state, field, dim=0):
 def get_max(state, field, dim=0):
     """Fetch the maximum of `field` in `state`"""
     return get_from_state(state, field, offset=OFFSET_MAX, dim=dim)
+
+
+def set_indices(
+    state: torch.Tensor,
+    indices: Union[List[int], torch.Tensor],
+    value: Any,
+    dim: int = 0,
+):
+    """
+    Set specific indices in state to the desired value.
+
+    :param state: The state to modify in-place, as a PyTorch tensor.
+    :param indices: Indices of the fields that should be set.
+    :param value: Value to set.
+    :param dim: The dimension of the tensor corresponding to the fields to be set.
+    """
+    slices = [slice(None)] * dim  # select everything up to `dim`
+    slices.append(indices)  # select only the desired indices
+    state[slices] = value

@@ -5,11 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-import functools
-import logging
-import operator
-
-from typing import Optional
+from typing import Iterable, List, Optional
 
 import torch
 from torch import nn
@@ -25,49 +21,93 @@ class SimpleNet(nn.Module):
         hidden_size: int,
         task_obs_size: int,
         num_actions: int,
+        activations: Iterable[str] = ("relu", "relu"),
         use_lstm: bool = False,
         use_reward: bool = True,
         use_task_obs_in_actor: bool = False,
         use_task_obs_in_critic: bool = False,
+        # Whether the actor / critic heads are present. At least one must be present,
+        # and if only one is present then only the corresponding `use_task_obs_in_XYZ`
+        # flag is used.
+        actor_head: bool = True,
+        critic_head: bool = True,
+        init_policy_logits_biases: Optional[List[float]] = None,
     ):
-        super(SimpleNet, self).__init__()
+        super().__init__()
         self.num_actions = num_actions
         self.use_lstm = use_lstm
         self.use_reward = use_reward
+        self.actor_head = actor_head
+        self.critic_head = critic_head
+        assert self.actor_head or self.critic_head
 
+        # Decide where to plug the task observation.
         self.use_task_obs_in_network_input = False
         self.use_task_obs_in_actor_head = False
         self.use_task_obs_in_critic_head = False
-        # If the task observation is provided as input to both actor and critic,
-        # then it is fed as input to the first layer.
-        # Otherwise, it will be provided only to the actor or critic head.
-        if use_task_obs_in_actor and use_task_obs_in_critic:
+        if (
+            # Both actor and critic need it.
+            (use_task_obs_in_actor and use_task_obs_in_critic)
+            # Actor needs it, and this model only computes the actor output.
+            or (use_task_obs_in_actor and not critic_head)
+            # Critic needs it, and this model only computes the critic output.
+            or (use_task_obs_in_critic and not actor_head)
+        ):
+            # Then we can add the task observation directly as input to the network.
             self.use_task_obs_in_network_input = True
         else:
+            # Otherwise plug it only as input to (at most) one of the heads.
             self.use_task_obs_in_actor_head = use_task_obs_in_actor
             self.use_task_obs_in_critic_head = use_task_obs_in_critic
 
         # Feature extraction.
-        self.fc1 = nn.Linear(
-            input_size + task_obs_size * self.use_task_obs_in_network_input,
-            hidden_size,
+        # The length of `activations` also defines the number of fully connected layers.
+        assert len(activations) >= 1
+        self.fc_layers = nn.ModuleList(
+            modules=[
+                nn.Linear(
+                    input_size + task_obs_size * self.use_task_obs_in_network_input,
+                    hidden_size,
+                )
+            ]
+            + [nn.Linear(hidden_size, hidden_size) for _ in range(len(activations) - 1)]
         )
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # Prepare list of activation functions.
+        self.activations = []
+        for act in activations:
+            if act == "linear":
+                self.activations.append(None)
+            elif act == "relu":
+                self.activations.append(F.relu)
+            elif act == "tanh":
+                self.activations.append(torch.tanh)
+            else:
+                raise NotImplementedError(act)
 
         # FC output size + (optionally) last reward.
-        core_output_size = self.fc2.out_features + int(self.use_reward)
+        core_output_size = self.fc_layers[-1].out_features + int(self.use_reward)
 
         if use_lstm:
             self.core = nn.LSTMCell(core_output_size, core_output_size)
 
-        self.policy = nn.Linear(
-            core_output_size + task_obs_size * self.use_task_obs_in_actor_head,
-            self.num_actions,
-        )
-        self.baseline = nn.Linear(
-            core_output_size + task_obs_size * self.use_task_obs_in_critic_head,
-            1,
-        )
+        if self.actor_head:
+            self.policy = nn.Linear(
+                core_output_size + task_obs_size * self.use_task_obs_in_actor_head,
+                self.num_actions,
+            )
+            if init_policy_logits_biases:
+                assert len(init_policy_logits_biases) == self.num_actions
+                with torch.no_grad():
+                    self.policy.bias[:] = torch.tensor(init_policy_logits_biases).type(
+                        self.policy.bias.dtype
+                    )
+
+        if self.critic_head:
+            self.baseline = nn.Linear(
+                core_output_size + task_obs_size * self.use_task_obs_in_critic_head,
+                1,
+            )
 
     def concat_to_task_obs(self, tensor, task_obs):
         """Concatenate a 2D tensor with the task observation"""
@@ -87,7 +127,9 @@ class SimpleNet(nn.Module):
     def forward(self, last_actions, env_outputs, task_obs, core_state, unroll=False):
         if not unroll:
             # [T=1, B, ...].
-            task_obs, env_outputs = nest.map(lambda t: t.unsqueeze(0), (task_obs, env_outputs))
+            task_obs, env_outputs = nest.map(
+                lambda t: t.unsqueeze(0), (task_obs, env_outputs)
+            )
 
         observation, reward, done = env_outputs
 
@@ -99,8 +141,10 @@ class SimpleNet(nn.Module):
         if self.use_task_obs_in_network_input:
             x = self.concat_to_task_obs(x, task_obs)
 
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        for layer, activation in zip(self.fc_layers, self.activations):
+            x = layer(x)
+            if activation is not None:
+                x = activation(x)
 
         if self.use_reward:
             # reward = torch.clamp(reward, -1, 1).view(T * B, 1).float()
@@ -126,40 +170,89 @@ class SimpleNet(nn.Module):
         else:
             core_output = core_input
 
-        actor_input = (
-            self.concat_to_task_obs(core_output, task_obs)
-            if self.use_task_obs_in_actor_head
-            else core_output
-        )
-        policy_logits = self.policy(actor_input)
+        if self.actor_head:
+            actor_input = (
+                self.concat_to_task_obs(core_output, task_obs)
+                if self.use_task_obs_in_actor_head
+                else core_output
+            )
+            policy_logits = self.policy(actor_input)
 
-        if self.training:
-            action = torch.multinomial(F.softmax(policy_logits, dim=1), num_samples=1)
+            if self.training:
+                action = torch.multinomial(
+                    F.softmax(policy_logits, dim=1), num_samples=1
+                )
+            else:
+                # Don't sample when testing.
+                action = torch.argmax(policy_logits, dim=1)
 
+            policy_logits = policy_logits.view(T, B, self.num_actions)
+            action = action.view(T, B)
+
+        if self.training and self.critic_head:
             critic_input = (
                 self.concat_to_task_obs(core_output, task_obs)
                 if self.use_task_obs_in_critic_head
                 else core_output
             )
             baseline = self.baseline(critic_input)
-
             baseline = baseline.view(T, B)
 
-        else:
-            # Don't sample when testing.
-            action = torch.argmax(policy_logits, dim=1)
-
-        policy_logits = policy_logits.view(T, B, self.num_actions)
-        action = action.view(T, B)
-
         if self.training:
-            outputs = dict(
-                action=action, policy_logits=policy_logits, baseline=baseline
-            )
+            outputs = {}
+            if self.actor_head:
+                outputs["action"] = action
+                outputs["policy_logits"] = policy_logits
+            if self.critic_head:
+                outputs["baseline"] = baseline
             if not unroll:
                 outputs = nest.map(lambda t: t.squeeze(0), outputs)
             return outputs, core_state
+
         else:
+            # A critic alone cannot be used in eval mode.
+            assert self.actor_head
             # In eval mode, we just return (action, core_state). PyTorch doesn't
             # support jit tracing output dicts.
             return action, core_state
+
+
+class SeparateActorCritic(nn.Module):
+    """Used to avoid sharing parameters between actor and critic"""
+
+    def __init__(self, **kw):
+        super().__init__()
+        self.actor = SimpleNet(**kw, actor_head=True, critic_head=False)
+        self.critic = SimpleNet(**kw, actor_head=False, critic_head=True)
+
+    def initial_state(self, *args, **kw):
+        return (
+            self.actor.initial_state(*args, **kw),
+            self.critic.initial_state(*args, **kw),
+        )
+
+    def forward(self, last_actions, env_outputs, task_obs, core_state, unroll=False):
+        actor_core_state, critic_core_state = core_state
+
+        actor_outputs, actor_core_state = self.actor(
+            last_actions=last_actions,
+            env_outputs=env_outputs,
+            task_obs=task_obs,
+            core_state=actor_core_state,
+            unroll=unroll,
+        )
+
+        if self.training:
+            critic_outputs, critic_core_state = self.critic(
+                last_actions=last_actions,
+                env_outputs=env_outputs,
+                task_obs=task_obs,
+                core_state=critic_core_state,
+                unroll=unroll,
+            )
+            outputs = actor_outputs.copy()
+            outputs.update(critic_outputs)
+            return outputs, (actor_core_state, critic_core_state)
+
+        else:
+            return actor_outputs, (actor_core_state, critic_core_state)

@@ -1,0 +1,13 @@
+defaults:
+    - base_jobs
+
+jobs:
+    #0
+    sampled_scenario:
+        delay: "${uniform_log_int: 10, 100, 27}"
+        uplink:
+            trace: 100.42mbps.trace
+            trace_scaling_factor: "${choice: 1., ${uniform_log: 0.5, 2, 1}, [0.1, 0.9]}"
+            loss: 0
+            queue_type: droptail
+            queue_size_packets: "${uniform_log_int: 100, 300, 173}"

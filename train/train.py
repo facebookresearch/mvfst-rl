@@ -161,6 +161,7 @@ def train(flags):
 
         job_info_queue = mp.Queue()
 
+        ready_event = mp.Event()
         stop_event.append(mp.Event())
         learner_proc.append(
             mp.Process(
@@ -171,13 +172,22 @@ def train(flags):
                     barrier=barrier,
                     gossip_buffer=shared_gossip_buffer,
                     stop_event=stop_event[-1],
+                    ready_event=ready_event,
                     job_info_queue=job_info_queue,
                 ),
                 daemon=False,
             )
         )
         pantheon_proc.append(
-            mp.Process(target=pantheon_env.main, args=(flags, job_info_queue), daemon=False)
+            mp.Process(
+                target=pantheon_env.main,
+                kwargs=dict(
+                    flags=flags,
+                    job_info_queue=job_info_queue,
+                    ready_event=ready_event,
+                ),
+                daemon=False,
+            )
         )
         learner_proc[rank].start()
         pantheon_proc[rank].start()
@@ -218,7 +228,9 @@ def test(flags):
 
     logging.info("Starting local test, logdir={}".format(flags.logdir))
     job_info_queue = None
-    pantheon_proc = mp.Process(target=pantheon_env.main, args=(flags, job_info_queue), daemon=False)
+    pantheon_proc = mp.Process(
+        target=pantheon_env.main, args=(flags, job_info_queue), daemon=False
+    )
     pantheon_proc.start()
     pantheon_proc.join()
     logging.info("Done local test")

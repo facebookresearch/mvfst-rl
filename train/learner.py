@@ -5,22 +5,23 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-import argparse
 import concurrent.futures
 import copy
 import csv
+import functools
 import json
 import logging
 import math
 import os
 import pickle
 import sys
+import threading
 import time
 import timeit
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import List, Optional
 
 # Necessary for multithreading.
 os.environ["OMP_NUM_THREADS"] = "1"  # noqa: E402
@@ -34,10 +35,18 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from train import state, utils
+from train import resolvers, state
 from train.constants import TORCHBEAST_ROOT, UDP_SEND_PACKET_LEN
-from train.models import SimpleNet
-from train.utils import JobInfo, StrEnum, get_jobs, get_n_jobs
+from train.models import SeparateActorCritic, SimpleNet
+from train.state import OFFSET_END, Field, get_indices_except, set_indices
+from train.utils import (
+    JobInfo,
+    StrEnum,
+    default_empty_list,
+    default_list,
+    get_jobs,
+    get_n_jobs,
+)
 
 sys.path.append(TORCHBEAST_ROOT)
 
@@ -72,11 +81,20 @@ class ConfigLearner:
     inference_batch_size: int = 2
     # The unroll length (time dimension).
     unroll_length: int = 80
+    # Activation functions for the first connected layers of the model.
+    # The number of activation functions also defines the number of layers.
+    # Supported activation functions: linear (i.e., no transformation), relu, tanh.
+    # WARNING: the C++ code should be updated in test mode if different activation
+    # functions are used.
+    activations: List[str] = default_list(["relu", "relu"])
     # Whether to use LSTM in agent model.
     use_lstm: bool = True
     # Whether to use the reward in the model. This should only be enabled if the
     # reward is not based on privileged information.
     use_reward: bool = True
+    # If True, then the actor and critic share the same trunk. Otherwise, no parameters
+    # are shared (they are completely indepdenent networks).
+    shared_actor_critic: bool = True
     # Initial random seed for torch.random.
     seed: int = 1234
     # If True, then we pretend the episode would continue after it ended,
@@ -88,6 +106,15 @@ class ConfigLearner:
     # not supported by evaluation actors.
     use_task_obs_in_actor: bool = False
     use_task_obs_in_critic: bool = False
+    # (Debug) List of biases to initialize the policy logits layer.
+    init_policy_logits_biases: List[float] = default_empty_list()
+
+    # Input settings.
+
+    # Whether some observations should be filtered out (by setting them to zero).
+    #   - all: keep all observations
+    #   - only_cwnd: only keep cwnd statistics
+    filter_obs: StrEnum("FilterObs", "all, only_cwnd") = "all"
 
     # GALA settings.
 
@@ -110,6 +137,13 @@ class ConfigLearner:
     reward_clipping: StrEnum(
         "RewardClipping", "abs_one, soft_asymmetric, none"
     ) = "none"
+    # Scale the reward by multiplying it by this number. This is only used when
+    # `reward_normalization` is False (since rescaling would be canceled out by
+    # normalization).
+    # The default value of 1-gamma ensures that if the reward is a constant R then the
+    # discounted return is R (this avoids situations where the critic needs to estimate
+    # very large values when gamma is close to 1).
+    reward_scaling_factor: float = "${minus:1,${discounting}}"
     # Whether to enable adaptive reward normalization. If True, then rewards are rescaled as
     #   reward = (reward - mu) / std * sqrt(1 - gamma^2)
     # where `mu` and `std` are respectively the running mean and standard deviation of
@@ -153,14 +187,16 @@ class ConfigLearner:
 
     # Optimizer settings.
 
+    # Which optimizer to use.
+    optimizer: StrEnum("Optimizer", "rmsprop sgd") = "rmsprop"
     # Learning rate.
     learning_rate: float = 1e-5
-    # "Learning rate decay method.
+    # Learning rate decay method.
     learning_rate_decay: StrEnum("LearningRateDecay", "linear, none") = "linear"
+    # RMSProp / SGD momentum.
+    momentum: float = 0
     # RMSProp smoothing constant.
     alpha: float = 0.99
-    # RMSProp momentum.
-    momentum: float = 0
     # RMSProp epsilon.
     epsilon: float = 0.01
     # Global gradient norm clip. Set to 0 to disable.
@@ -258,6 +294,8 @@ def compute_metrics(
 
     if flags.reward_normalization:
         normalize_rewards(flags, job_ids, rewards, reward_stats)
+    else:
+        rewards *= flags.reward_scaling_factor
 
     discounts = (~done).float() * flags.discounting
 
@@ -292,7 +330,7 @@ def compute_metrics(
     batch_total_size = learner_logits.shape[0] * learner_logits.shape[1]
     uniform_entropy = batch_total_size * np.log(flags.num_actions)
 
-    return {
+    metrics = {
         "loss/total": pg_loss
         + flags.baseline_cost * baseline_loss
         + flags.entropy_cost * entropy_loss,
@@ -302,7 +340,16 @@ def compute_metrics(
         "critic/baseline/mean": torch.mean(baseline),
         "critic/baseline/min": torch.min(baseline),
         "critic/baseline/max": torch.max(baseline),
+        "rewards/mean": torch.mean(rewards),
     }
+
+    # Monitor the probability of each action.
+    actor_probs = actor_logits.softmax(dim=-1)
+    for action_idx in range(actor_probs.shape[-1]):
+        metrics[f"actor/p_action_{action_idx}"] = torch.mean(
+            actor_probs[:, :, action_idx]
+        )
+    return metrics
 
 
 @torch.no_grad()
@@ -450,7 +497,22 @@ class Rollouts:
         curr_indices = self._index[actor_ids]
 
         for s, v in zip(nest.flatten(self._state), nest.flatten(timesteps)):
-            s[actor_ids, curr_indices] = v
+            try:
+                s[actor_ids, curr_indices] = v
+            except Exception as exc:
+                # Provide more information in exception message to help debugging.
+                raise RuntimeError(
+                    "Exception raised in Rollouts.append(): %s\n"
+                    "  - actor_ids = %s\n"
+                    "  - curr_indices = %s\n"
+                    "  - s.shape = %s",
+                    "  - v.shape = %s",
+                    exc,
+                    actor_ids,
+                    curr_indices,
+                    s.shape,
+                    v.shape,
+                )
 
         self._index[actor_ids] += 1
 
@@ -524,15 +586,18 @@ def checkpoint(model, optimizer, scheduler, flags):
 
 def make_train_model(flags, device=None):
     """Create the intended model according to options in `flags`"""
-    model = SimpleNet(
+    model_class = SimpleNet if flags.shared_actor_critic else SeparateActorCritic
+    model = model_class(
         input_size=flags.observation_length,
         hidden_size=flags.hidden_size,
+        activations=flags.activations,
         task_obs_size=flags.task_obs_size,
         num_actions=flags.num_actions,
         use_lstm=flags.use_lstm,
         use_reward=flags.use_reward,
         use_task_obs_in_actor=flags.use_task_obs_in_actor,
         use_task_obs_in_critic=flags.use_task_obs_in_critic,
+        init_policy_logits_biases=flags.init_policy_logits_biases,
     )
     return model if device is None else model.to(device)
 
@@ -577,8 +642,12 @@ def learner_loop(
     barrier=None,
     gossip_buffer=None,
     stop_event=None,
+    ready_event=None,
     job_info_queue=None,
 ):
+    # "Precompute" flags for more efficient access.
+    flags = OmegaConf.to_object(flags)
+
     if flags.num_actors < flags.batch_size:
         logging.warn("Batch size is larger than number of actors.")
     assert (
@@ -612,12 +681,11 @@ def learner_loop(
             "summary statistics, and would need to be updated to work without."
         )
 
-    task_obs_size = flags.task_obs_size
-
-    # Using maxsize=1 is meant to slow down the inference threads when learning is too
+    # Setting a maxsize is meant to slow down the inference threads when learning is too
     # slow to catch up. This avoids a situation where inputs to the learner might start
     # getting really old, which would drastically hurt learning.
-    unroll_queue = queue.Queue(maxsize=1)
+    # Using `num_actors_train // 2` is just a heuristic.
+    unroll_queue = queue.Queue(maxsize=max(1, flags.num_actors_train // 2))
     log_queue = queue.Queue()
 
     # Inference model.
@@ -631,7 +699,7 @@ def learner_loop(
     dummy_env_output = nest.map(
         lambda a: torch.from_numpy(np.array(a)), dummy_env_output
     )
-    dummy_task_obs = torch.zeros(task_obs_size, dtype=torch.float32)
+    dummy_task_obs = torch.zeros(flags.task_obs_size, dtype=torch.float32)
 
     with torch.no_grad():
         dummy_model_output, _ = model(
@@ -656,7 +724,7 @@ def learner_loop(
             throughput_mean=torch.zeros([flags.num_actors]),
             job_id=torch.zeros([flags.num_actors], dtype=torch.int64),
             task_obs=torch.zeros(
-                [flags.num_actors, task_obs_size], dtype=torch.float32
+                [flags.num_actors, flags.task_obs_size], dtype=torch.float32
             ),
         )
     )
@@ -673,7 +741,6 @@ def learner_loop(
     # Current agent states.
     agent_states = StructuredBuffer(copy.deepcopy(initial_states))
 
-    num_actors_train = flags.num_actors_train  # precompute for efficiency
     rollouts = Rollouts(
         dict(
             job_ids=torch.zeros((), dtype=torch.int64),
@@ -684,7 +751,7 @@ def learner_loop(
         ),
         unroll_length=flags.unroll_length,
         # Importantly, rollouts ignore evaluation actors.
-        num_actors=num_actors_train,
+        num_actors=flags.num_actors_train,
     )
 
     # Map a pair (actor_id, job_count) to the `JobInfo` for this job.
@@ -692,6 +759,13 @@ def learner_loop(
     # from this dictionary. However, this is not a major concern at this time
     # since the data associated to each job is quite small.
     all_job_info = {}
+
+    if flags.filter_obs == "all":
+        filter_data = None
+    elif flags.filter_obs == "only_cwnd":
+        filter_data = get_indices_except(Field.CWND)
+    else:
+        raise NotImplementedError(flags.filter_jobs)
 
     server = torchbeast.Server(flags.server_address, max_parallel_calls=4)
 
@@ -711,6 +785,7 @@ def learner_loop(
         :param env_outputs: Tuple of observation (N x obs_dim), reward (N) and
             done (N) tensors, with N the size of `actor_ids`.
         """
+        inference_start_time = time.perf_counter()
         torch.set_grad_enabled(False)
         previous_run_ids = actor_run_ids.get(actor_ids)
         reset_indices = previous_run_ids != run_ids
@@ -730,7 +805,7 @@ def learner_loop(
 
             # Since rollouts do not use evaluation actors we need to remove them
             # from the list of actors to reset.
-            r_ids = actors_needing_reset[actors_needing_reset < num_actors_train]
+            r_ids = actors_needing_reset[actors_needing_reset < flags.num_actors_train]
             rollouts.reset(r_ids)
 
             initial_agent_states = model.initial_state(actors_needing_reset.numel())
@@ -739,14 +814,19 @@ def learner_loop(
 
         obs, reward, done = env_outputs
 
+        # Optionally filter out some observations.
+        filter_observations(flags=flags, obs=obs, filter_data=filter_data)
+
         # Update logging stats at end of episode.
         done_ids = actor_ids[done]
         # Note that it is important to provide `job_id` and `task_obs` even if we do not
         # want to change them. This is because the update in `StructuredBuffer.add()`
         # assumes that the input data contains all fields.
-        task_obs = torch.zeros((len(obs), task_obs_size), dtype=torch.float32)
+        task_obs = torch.zeros((len(obs), flags.task_obs_size), dtype=torch.float32)
         job_id = torch.zeros(len(obs), dtype=torch.int64)
+        done_duration = 0
         if done_ids.numel():
+            start_time = time.perf_counter()
             # Do not log stats of zero-length episodes (typically these should
             # only happen on the very first episode, due to the `done` flag
             # being true without having any episode before).
@@ -766,15 +846,13 @@ def learner_loop(
             ):
                 if not is_done:
                     continue
-                job_info = get_job_info(
-                    actor_id=actor_id.item(),
-                    job_count=job_count.item(),
-                    all_job_info=all_job_info,
-                    job_info_queue=job_info_queue,
-                )
+                job_info = all_job_info[(actor_id.item(), job_count.item())]
                 job_id[idx] = job_info.job_id
                 task_obs[idx] = job_info.task_obs
 
+            done_duration = time.perf_counter() - start_time
+
+        start_time = time.perf_counter()
         actor_infos.add(
             actor_ids,
             dict(
@@ -792,24 +870,30 @@ def learner_loop(
                 task_obs=task_obs,
             ),
         )
+        actor_infos_duration = time.perf_counter() - start_time
         current_actor_info = actor_infos.get(actor_ids)
 
         last_actions = actions.get(actor_ids)
         prev_agent_states = agent_states.get(actor_ids)
         current_task_obs = current_actor_info["task_obs"]
 
+        start_time = time.perf_counter()
         actor_outputs, new_agent_states = model(
             *nest.map(
                 lambda t: t.to(flags.inference_device),
                 (last_actions, env_outputs, current_task_obs, prev_agent_states),
             )
         )
+
         actor_outputs, new_agent_states = nest.map(
             lambda t: t.cpu(), (actor_outputs, new_agent_states)
         )
+        model_duration = time.perf_counter() - start_time
 
-        is_train_actor = actor_ids < num_actors_train
+        is_train_actor = actor_ids < flags.num_actors_train
+        train_actor_duration = 0
         if is_train_actor.any():
+            start_time = time.perf_counter()
             timestep = dict(
                 job_ids=current_actor_info["job_id"],
                 last_actions=last_actions,
@@ -827,10 +911,13 @@ def learner_loop(
             completed_ids, unrolls = rollouts.append(train_actor_ids, timestep)
             if completed_ids.numel():
                 try:
-                    unroll_queue.put(
-                        (completed_ids, unrolls, first_agent_states.get(completed_ids)),
-                        timeout=5.0,
+                    unroll_queue.put_nowait(
+                        (completed_ids, unrolls, first_agent_states.get(completed_ids))
                     )
+                except queue.Full:
+                    # If the queue is full we just skip these unrolls. This avoids
+                    # slowing down inference while waiting for the queue to be emptied.
+                    logging.warning("Skipping unrolls due to full queue")
                 except queue.Closed:
                     if server.running():
                         raise
@@ -840,11 +927,22 @@ def learner_loop(
                 # item of the previous rollout (and we need the state before that one). This is
                 # why this line must happen before the update to `agent_states` below.
                 first_agent_states.set(completed_ids, agent_states.get(completed_ids))
+            train_actor_duration = time.perf_counter() - start_time
 
         agent_states.set(actor_ids, new_agent_states)
 
         action = actor_outputs["action"]
         actions.set(actor_ids, action)
+        inference_duration = time.perf_counter() - inference_start_time
+        if inference_duration > 0.05:
+            logging.warning(
+                "Inference duration: %s (model: %s, train_actor: %s, actor_infos: %s, done: %s))",
+                inference_duration,
+                model_duration,
+                train_actor_duration,
+                actor_infos_duration,
+                done_duration,
+            )
         return action
 
     server.bind("inference", inference, batch_size=flags.inference_batch_size)
@@ -862,6 +960,9 @@ def learner_loop(
                 barrier,
                 gossip_buffer,
                 stop_event=stop_event,
+                ready_event=ready_event,
+                job_info_queue=job_info_queue,
+                all_job_info=all_job_info,
             )
         except KeyboardInterrupt:
             print("Stopping ...")
@@ -869,40 +970,6 @@ def learner_loop(
             unroll_queue.close()
             server.stop()
         # Need to shut down executor after queue is closed.
-
-
-def get_job_info(actor_id, job_count, all_job_info, job_info_queue):
-    """Obtain the job info associated to a given actor_id & job_count"""
-    timeout = time.perf_counter() + 1
-    key = (actor_id, job_count)
-    while True:
-        try:
-            return all_job_info[key]
-        except KeyError:
-            if time.perf_counter() > timeout:
-                raise RuntimeError(
-                    f"Timeout while trying to get task state for {actor_id} / {job_count} "
-                )
-            update_job_info(all_job_info, job_info_queue)
-
-
-def update_job_info(all_job_info, job_info_queue):
-    """
-    Get all job information from `job_info_queue` and store them into `all_job_info`.
-
-    This function must remain thread-safe.
-    """
-    while True:
-        try:
-            actor_id, job_id, job_count, task_obs = job_info_queue.get_nowait()
-        except queue.Empty:
-            return
-        key = (actor_id, job_count)
-        # There is a small risk of race condition on this assert (the key may be added by
-        # another thread after the assert), but it does not matter since this is only to
-        # detect potential bugs.
-        assert key not in all_job_info
-        all_job_info[key] = JobInfo(job_id=job_id, task_obs=task_obs)
 
 
 def learn(
@@ -915,10 +982,12 @@ def learn(
     barrier=None,
     gossip_buffer=None,
     stop_event=None,
+    ready_event=None,
+    job_info_queue=None,
+    all_job_info=None,
 ):
     assert flags.mode == "train"
     train_jobs = get_jobs(flags)
-    num_actors_train = flags.num_actors_train
 
     eval_jobs = None
     if flags.num_actors_eval > 0:
@@ -927,12 +996,19 @@ def learn(
 
     model = make_train_model(flags, flags.learner_device)
 
-    optimizer = torch.optim.RMSprop(
+    if flags.optimizer == "rmsprop":
+        make_optim = functools.partial(
+            torch.optim.RMSprop, eps=flags.epsilon, alpha=flags.alpha
+        )
+    elif flags.optimizer == "sgd":
+        make_optim = torch.optim.SGD
+    else:
+        raise NotImplementedError(flags.optimizer)
+
+    optimizer = make_optim(
         model.parameters(),
         lr=flags.learning_rate,
         momentum=flags.momentum,
-        eps=flags.epsilon,
-        alpha=flags.alpha,
     )
 
     steps_per_epoch = flags.batch_size * flags.unroll_length
@@ -1049,7 +1125,7 @@ def learn(
                 # store the job ID as it would appear in the `{train,eval}_job_ids`
                 # option (i.e., its index in the list of all jobs).
                 # We do the conversion here.
-                if actor_id < num_actors_train:
+                if actor_id < flags.num_actors_train:
                     job_id = train_jobs[job_id].job_id
                     job_type = "train"
                 else:
@@ -1057,12 +1133,24 @@ def learn(
                     job_type = "eval"
 
                 if tb_writer is not None:
-                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/episode_steps", episode_step, steps)
-                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/episode_return", episode_return, steps)
-                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/cwnd_mean", cwnd_mean, steps)
-                    tb_writer.add_scalar(f"{job_type}/{job_id}/actor/delay_mean", delay_mean, steps)
                     tb_writer.add_scalar(
-                        f"{job_type}/{job_id}/actor/throughput_mean", throughput_mean, steps
+                        f"{job_type}/{job_id}/actor/episode_steps", episode_step, steps
+                    )
+                    tb_writer.add_scalar(
+                        f"{job_type}/{job_id}/actor/episode_return",
+                        episode_return,
+                        steps,
+                    )
+                    tb_writer.add_scalar(
+                        f"{job_type}/{job_id}/actor/cwnd_mean", cwnd_mean, steps
+                    )
+                    tb_writer.add_scalar(
+                        f"{job_type}/{job_id}/actor/delay_mean", delay_mean, steps
+                    )
+                    tb_writer.add_scalar(
+                        f"{job_type}/{job_id}/actor/throughput_mean",
+                        throughput_mean,
+                        steps,
                     )
 
                 log(
@@ -1124,6 +1212,25 @@ def learn(
             for job_id in all_job_ids
         }
 
+    # Start thread to fetch job information from actor processes. We do it in a
+    # separate thread as doing it at inference time can cause extra delays.
+    monitor_stop_event = threading.Event()
+    job_info_monitor = threading.Thread(
+        target=monitor_job_info,
+        kwargs=dict(
+            all_job_info=all_job_info,
+            monitor_stop_event=monitor_stop_event,
+            job_info_queue=job_info_queue,
+        ),
+    )
+    job_info_monitor.start()
+
+    # Ready to go!
+    if ready_event is not None:
+        ready_event.set()
+
+    logging.info("Starting learner loop")
+
     while steps < flags.total_steps:
         batch, initial_agent_state = batch_future.result()
         batch_future = executor.submit(load_on_gpu)
@@ -1167,7 +1274,7 @@ def learn(
 
         current_time = timeit.default_timer()
 
-        if current_time - last_checkpoint_time > 10 * 60:  # Every 10 min.
+        if current_time - last_checkpoint_time > 60 * 60:  # Every hour.
             checkpoint(model, optimizer, scheduler, flags)
             last_checkpoint_time = timeit.default_timer()
 
@@ -1179,12 +1286,45 @@ def learn(
     logging.info("Learning finished after %i steps", steps)
     checkpoint(model, optimizer, scheduler, flags)
 
+    logging.debug("Synching with main process to trigger env shutdown")
     if stop_event is not None:
-        logging.debug("Synching with main process to trigger env shutdown")
         stop_event.set()
-        while stop_event.is_set():  # wait until main process clears event to continue
-            time.sleep(0.1)
-        logging.debug("Env shutdown completed -- ready to stop server")
+    monitor_stop_event.set()
+    while stop_event.is_set():  # wait until main process clears event to continue
+        time.sleep(0.1)
+    job_info_monitor.join()
+    logging.debug("Env shutdown completed -- ready to stop server")
+
+
+def filter_observations(flags, obs, filter_data):
+    """
+    Filter observations based on option `filter_obs`.
+
+    In general this function should be called with autograd disabled.
+    """
+    if flags.filter_obs == "all":
+        return
+    elif flags.filter_obs == "only_cwnd":
+        set_indices(state=obs, indices=filter_data, value=0.0, dim=1)
+        # We also need to clear the "history" portion of the state.
+        obs[:, OFFSET_END:] = 0.0
+    else:
+        raise NotImplementedError(flags.filter_obs)
+
+
+def monitor_job_info(all_job_info, job_info_queue, monitor_stop_event):
+    while not monitor_stop_event.is_set():
+        while True:
+            try:
+                actor_id, job_id, job_count, task_obs = job_info_queue.get_nowait()
+            except queue.Empty:
+                break
+            key = (actor_id, job_count)
+            assert key not in all_job_info
+            all_job_info[key] = JobInfo(job_id=job_id, task_obs=task_obs)
+            logging.info("Obtained job info for key: %s", key)
+        # Check queue every 500ms.
+        time.sleep(0.5)
 
 
 def trace(flags):
@@ -1237,6 +1377,7 @@ def main(
     barrier=None,
     gossip_buffer=None,
     stop_event=None,
+    ready_event=None,
     job_info_queue=None,
 ):
     try:
@@ -1246,9 +1387,15 @@ def main(
             barrier=barrier,
             gossip_buffer=gossip_buffer,
             stop_event=stop_event,
+            ready_event=ready_event,
             job_info_queue=job_info_queue,
         )
-    finally:  # make sure `stop_event` is set when the process exits
+    finally:
+        # Make sure `ready_event` and `stop_event` are set when the process exits.
+        # This avoids a situation where a crash before they could be set would block
+        # some ohter processes.
+        if ready_event is not None:
+            ready_event.set()
         if stop_event is not None:
             stop_event.set()
 
@@ -1259,9 +1406,11 @@ def _main(
     barrier=None,
     gossip_buffer=None,
     stop_event=None,
+    ready_event=None,
     job_info_queue=None,
 ):
     torch.random.manual_seed(flags.seed)
+    resolvers.seed_thread_rng(flags.jobs_seed)
 
     if flags.logdir:
         # Write meta.json file with some information on our setup.
@@ -1300,6 +1449,7 @@ def _main(
             barrier=barrier,
             gossip_buffer=gossip_buffer,
             stop_event=stop_event,
+            ready_event=ready_event,
             job_info_queue=job_info_queue,
         )
     elif flags.mode == "trace":

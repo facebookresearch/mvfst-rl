@@ -17,7 +17,6 @@ import threading
 import time
 
 from dataclasses import dataclass
-from os import path
 from pathlib import Path
 from typing import List
 
@@ -26,7 +25,7 @@ import torch
 from omegaconf import OmegaConf
 
 from train import resolvers, utils
-from train.constants import PANTHEON_ROOT, TRACES_ROOT
+from train.constants import PANTHEON_ROOT, TRACES_ROOT, UDP_SEND_PACKET_LEN
 from train.env_spec import ConfigJobs, get_env_cmd, set_scaled_traces
 from train.utils import (
     StrEnum,
@@ -134,11 +133,36 @@ class ConfigEnv:
     # First action should be 0 (no-op).
     # This list is optional: `utils.get_actions()` will be invoked if missing.
     cc_env_actions: List[str] = default_empty_list()
-    # If `True`, then instead of
-    #   a * throughput - b * delay - c * loss
-    # we use as reward
-    #   a * log(a' + throughput) - b * log(b' + delay) - c * log(c' + loss)
-    cc_env_reward_log_ratio: bool = True
+    # Which formula to use for the reward:
+    #   - linear: a * throughput - b * delay - c * loss
+    #   - log_ratio:
+    #       a * log(a' + throughput) - b * log(b' + delay) - c * log(c' + loss)
+    #   - min_throughput:
+    #       a * rt + b * rd
+    #       rt:
+    #           1 if throughput >= r * link_bandwdith
+    #           1 - 2 / (1 + throughput / link_bandwidth) otherwise (< 0)
+    #       rd:
+    #           log(k) - log(k + n_packets_in_queue)
+    #           n_packets_in_queuex = delay * link_bandwidth / packet_size
+    #   - target_cwnd:
+    #       a * (1 - min(1, abs(1 - cwnd / target_cwnd)))
+    #       - b * (cwnd <= target_cwnd ? 0 : min(1, delay / rtt_min))
+    #   - target_cwnd_shaped:
+    #       a * (cwnd_is_closer_to_target_cwnd_compared_to_previous_step ? 1 : -1)
+    #       (also +1 if cwnd is exactly equal to target_cwnd)
+    #   - higher_is_better (debugging):
+    #       a * (cwnd_is_higher_than_previous_step_or_above_target_cwnd ? 1 : -1)
+    #   - above_cwnd:
+    #       a * (cwnd >= r * target_cwnd ? 1 : 0) - b * log(b' + delay)
+    # Note that the delay is computed as max(0, delay - o).
+    cc_env_reward_formula: StrEnum(
+        "CCEnvRewardFormula",
+        "linear, log_ratio, min_throughput, target_cwnd, target_cwnd_shaped, "
+        "higher_is_better, above_cwnd",
+    ) = "log_ratio"
+    # Offset to remove from the delay when computing the reward (o).
+    cc_env_reward_delay_offset: float = 0.0
     # Throughput multiplier in reward (a).
     cc_env_reward_throughput_factor: float = 1
     # Offset to add to throughput in log version (a').
@@ -151,6 +175,10 @@ class ConfigEnv:
     cc_env_reward_packet_loss_factor: float = 0
     # Offset to add to packet loss in log version (c').
     cc_env_reward_packet_loss_log_offset: float = 1e-5
+    # Ratio of the maximum achievable bandwidth that we want to reach (r).
+    cc_env_reward_min_throughput_ratio: float = 0.9
+    # Offset to add to the estimated number of packets in the queue (k).
+    cc_env_reward_n_packets_offset: float = 1.0
     # Whether to take max delay over observations in reward (avg otherwise).
     cc_env_reward_max_delay: bool = True
     # Target fixed cwnd value (only used in 'fixed' env mode).
@@ -170,12 +198,14 @@ def get_actor_data(flags, actor_id):
     resolvers.seed_thread_rng(flags.jobs_seed + actor_id)
 
     # Environment variables for Pantheon.
-    pantheon_env = get_pantheon_env(flags)
+    pantheon_env = get_pantheon_env(flags, actor_id)
 
     return jobs, pantheon_env
 
 
-def get_job_cmd(flags, jobs, job_id, actor_id, data_dir, job_count=-1, job_info_queue=None):
+def get_job_cmd(
+    flags, jobs, job_id, actor_id, data_dir, job_count=-1, job_info_queue=None
+):
     """Return the command line associate to a given job in the list of all jobs"""
     # Select the desired job and resolve its parameters (=> sampling random numbers).
     job = copy.deepcopy(jobs[job_id])
@@ -193,7 +223,9 @@ def get_job_cmd(flags, jobs, job_id, actor_id, data_dir, job_count=-1, job_info_
     # Generate the command line (expanding the data directory in the template).
     cmd_tmpl = get_env_cmd(flags, job)
     cmd = [utils.safe_format(c, {"data_dir": data_dir}) for c in cmd_tmpl]
-    cmd = update_cmd(cmd=cmd, flags=flags, actor_id=actor_id, job_count=job_count)
+    cmd = update_cmd(
+        cmd=cmd, flags=flags, actor_id=actor_id, job=job, job_count=job_count
+    )
 
     return cmd
 
@@ -260,8 +292,8 @@ def train_run(flags, job_info_queue, thread_id):
         # Launch the job.
         p = subprocess.Popen(cmd, env=pantheon_env)
         logging.info(
-            "Thread: {}, episode: {}, experiment: {}, subprocess: {}, cmd: {}".format(
-                thread_id, episode, job_id, p.pid, " ".join(cmd)
+            "Thread: {}, episode: {}, experiment: {}, process: {}, subprocess: {}, cmd: {}".format(
+                thread_id, episode, job_id, os.getpid(), p.pid, " ".join(cmd)
             )
         )
         p.wait()
@@ -377,7 +409,7 @@ def get_jobs_to_perform(flags, job_ids, mode=None, actor_id=None):
     return jobs
 
 
-def get_pantheon_env(flags):
+def get_pantheon_env(flags, actor_id):
     # $PATH override to put python2 first for Pantheon
     result = subprocess.run(
         ["dirname $(which python2)"], shell=True, stdout=subprocess.PIPE
@@ -387,6 +419,9 @@ def get_pantheon_env(flags):
 
     pantheon_env = os.environ.copy()
     pantheon_env["PATH"] = ":".join([python2_path, pantheon_env["PATH"]])
+    # Store actor info in env variable: this allows child processes to refer to it in logs.
+    pantheon_env["MVFSTRL_ACTOR_ID"] = str(actor_id)
+    pantheon_env["MVFSTRL_ACTOR_PID"] = str(os.getpid())
     return pantheon_env
 
 
@@ -456,7 +491,7 @@ def split_schemes(schemes):
     return all_schemes
 
 
-def update_cmd(cmd, flags, actor_id, job_count):
+def update_cmd(cmd, flags, actor_id, job, job_count):
     if flags.mode == "train":
         schemes = "mvfst_rl"
         run_times = 1
@@ -466,6 +501,28 @@ def update_cmd(cmd, flags, actor_id, job_count):
         # In test mode we ignore the input job counter and force it to -1.
         # This ensures that the model cannot use job-specific information.
         job_count = -1
+
+    uplink_bandwidth = (
+        TRACE_TO_MAX_THROUGHPUT[job.uplink.trace] * job.uplink.trace_scaling_factor
+    )
+
+    target_cwnd = int(
+        uplink_bandwidth * 1024 * 1024 * (job.delay * 2 / 1000) / UDP_SEND_PACKET_LEN
+        + 0.5
+    )
+    if target_cwnd < 10:
+        # Very low cwnd => the only achievable values are 2, 4, 6, 8.
+        prev_cwnd = 2
+        for candidate_cwnd in [2, 4, 6, 8]:
+            if candidate_cwnd > target_cwnd:
+                target_cwnd = prev_cwnd
+                break
+            prev_cwnd = candidate_cwnd
+        else:
+            target_cwnd = 8
+    else:
+        # Round down to the nearest multiple of 10.
+        target_cwnd = (target_cwnd // 10) * 10
 
     extra_sender_args = " ".join(
         [
@@ -482,7 +539,10 @@ def update_cmd(cmd, flags, actor_id, job_count):
             "--cc_env_norm_ms={}".format(flags.cc_env_norm_ms),
             "--cc_env_norm_bytes={}".format(flags.cc_env_norm_bytes),
             "--cc_env_actions={}".format(",".join(flags.cc_env_actions)),
-            "--cc_env_reward_log_ratio={}".format(flags.cc_env_reward_log_ratio),
+            "--cc_env_uplink_bandwidth={}".format(uplink_bandwidth),
+            "--cc_env_reward_target_cwnd={}".format(target_cwnd),
+            "--cc_env_reward_delay_offset={}".format(flags.cc_env_reward_delay_offset),
+            "--cc_env_reward_formula={}".format(flags.cc_env_reward_formula),
             "--cc_env_reward_throughput_factor={}".format(
                 flags.cc_env_reward_throughput_factor
             ),
@@ -499,6 +559,12 @@ def update_cmd(cmd, flags, actor_id, job_count):
             "--cc_env_reward_packet_loss_log_offset={}".format(
                 flags.cc_env_reward_packet_loss_log_offset
             ),
+            "--cc_env_reward_min_throughput_ratio={}".format(
+                flags.cc_env_reward_min_throughput_ratio
+            ),
+            "--cc_env_reward_n_packets_offset={}".format(
+                flags.cc_env_reward_n_packets_offset
+            ),
             "--cc_env_reward_max_delay={}".format(flags.cc_env_reward_max_delay),
             "--cc_env_fixed_cwnd={}".format(flags.cc_env_fixed_cwnd),
             "--cc_env_min_rtt_window_length_us={}".format(
@@ -514,7 +580,12 @@ def update_cmd(cmd, flags, actor_id, job_count):
     ]
 
 
-def main(flags, job_info_queue):
+def main(flags, job_info_queue, ready_event=None):
+
+    if ready_event is not None:
+        # Wait until ready.
+        while not ready_event.is_set():
+            time.sleep(0.1)
 
     if flags.mode == "train":
         # One thread / pantheon env per actor while training.

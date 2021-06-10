@@ -1,11 +1,11 @@
 /*
-* Copyright (c) Facebook, Inc. and its affiliates.
-* All rights reserved.
-*
-* This source code is licensed under the license found in the
-* LICENSE file in the root directory of this source tree.
-*
-*/
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
 #include "CongestionControlEnv.h"
 
 #include <folly/Conv.h>
@@ -15,7 +15,7 @@ namespace quic {
 
 using Field = NetworkState::Field;
 
-static const float kBytesToMB = 1e-6;
+static const float kBytesToMB = 1.f / 1048576.f; // 1 / (1024 * 1024)
 
 /// CongestionControlEnv impl
 
@@ -122,8 +122,8 @@ void CongestionControlEnv::handleStates() {
   ++rewardCount_;
   rewardSum_ += reward;
   if (rewardCount_ % 10 == 0) {
-    VLOG(1) << __func__ << ": for jobCount= " << cfg_.jobCount
-            << ", after " << rewardCount_
+    VLOG(1) << __func__ << ": for jobCount= " << cfg_.jobCount << ", after "
+            << rewardCount_
             << " steps, avg reward = " << (rewardSum_ / rewardCount_);
   }
 
@@ -188,11 +188,14 @@ float CongestionControlEnv::computeReward(
   float avgDelay = 0.0;
   float maxDelay = 0.0;
   float totalLost = 0.0;
+  float minRtt = std::numeric_limits<float>::max();
+  static uint64_t prevCwndBytes = 10;
   for (const auto &state : states) {
     avgThroughput += state[Field::THROUGHPUT];
     avgDelay += state[Field::DELAY];
     maxDelay = std::max(maxDelay, state[Field::DELAY]);
     totalLost += state[Field::LOST];
+    minRtt = std::min(minRtt, state[Field::RTT_MIN]);
   }
   avgThroughput /= states.size();
   avgDelay /= states.size();
@@ -203,18 +206,67 @@ float CongestionControlEnv::computeReward(
   float avgDelayMs = avgDelay * normMs();
   float maxDelayMs = maxDelay * normMs();
   float delayMs = (cfg_.maxDelayInReward ? maxDelayMs : avgDelayMs);
+  delayMs = std::max(0.f, delayMs - cfg_.delayOffset);
   float lostMbits = totalLost * normBytes() * kBytesToMB;
 
   float reward = 0.f;
-  if (cfg_.rewardLogRatio) {
+  if (cfg_.rewardFormula == Config::RewardFormula::LINEAR) {
+    reward = cfg_.throughputFactor * throughputMBps -
+             cfg_.delayFactor * delayMs - cfg_.packetLossFactor * lostMbits;
+  } else if (cfg_.rewardFormula == Config::RewardFormula::LOG_RATIO) {
     reward =
         cfg_.throughputFactor * log(cfg_.throughputLogOffset + throughputMBps) -
         cfg_.delayFactor * log(cfg_.delayLogOffset + delayMs) -
         cfg_.packetLossFactor * log(cfg_.packetLossLogOffset + lostMbits);
+  } else if (cfg_.rewardFormula == Config::RewardFormula::MIN_THROUGHPUT) {
+    float rewardThroughput = 1.f;
+    if (throughputMBps < cfg_.minThroughputRatio * cfg_.uplinkBandwidth) {
+      rewardThroughput =
+          1.f - 2.f / (1.f + throughputMBps / cfg_.uplinkBandwidth);
+    }
+    const float nPacketsInQueue = delayMs / 1000.f * cfg_.uplinkBandwidth /
+                                  kBytesToMB /
+                                  static_cast<float>(conn_.udpSendPacketLen);
+    const float rewardDelay =
+        log(cfg_.nPacketsOffset) - log(cfg_.nPacketsOffset + nPacketsInQueue);
+    reward = cfg_.throughputFactor * rewardThroughput +
+             cfg_.delayFactor * rewardDelay;
+  } else if (cfg_.rewardFormula == Config::RewardFormula::TARGET_CWND) {
+    const float targetCwndBytes = cfg_.targetCwnd * conn_.udpSendPacketLen;
+    reward = cfg_.throughputFactor *
+             (1.f - std::min(1.f, abs(1.f - cwndBytes_ / targetCwndBytes)));
+    if (cwndBytes_ > targetCwndBytes) {
+      reward -= cfg_.delayFactor *
+                std::min(1.f, delayMs / std::max(1.f, minRtt * normMs()));
+    }
+  } else if (cfg_.rewardFormula == Config::RewardFormula::TARGET_CWND_SHAPED) {
+    const float targetCwndBytes = cfg_.targetCwnd * conn_.udpSendPacketLen;
+    float rewardThroughput = -1.f;
+    const float diff = abs(cwndBytes_ - targetCwndBytes);
+    if (diff < 1.f or diff < abs(prevCwndBytes - targetCwndBytes)) {
+      rewardThroughput = 1.f;
+    }
+    prevCwndBytes = cwndBytes_;
+    reward = cfg_.throughputFactor * rewardThroughput;
+  } else if (cfg_.rewardFormula == Config::RewardFormula::HIGHER_IS_BETTER) {
+    const float targetCwndBytes = cfg_.targetCwnd * conn_.udpSendPacketLen;
+    float rewardThroughput = -1.f;
+    if (cwndBytes_ > prevCwndBytes || cwndBytes_ >= targetCwndBytes) {
+      rewardThroughput = 1.f;
+    }
+    prevCwndBytes = cwndBytes_;
+    reward = cfg_.throughputFactor * rewardThroughput;
+  } else if (cfg_.rewardFormula == Config::RewardFormula::ABOVE_CWND) {
+    const float targetCwndBytes = cfg_.targetCwnd * conn_.udpSendPacketLen;
+    const float rewardThroughput =
+        cwndBytes_ >= cfg_.minThroughputRatio * targetCwndBytes ? 1.f : 0.f;
+    const float rewardDelay = -log(cfg_.delayLogOffset + delayMs);
+    reward = cfg_.throughputFactor * rewardThroughput +
+             cfg_.delayFactor * rewardDelay;
   } else {
-    reward = cfg_.throughputFactor * throughputMBps -
-             cfg_.delayFactor * delayMs - cfg_.packetLossFactor * lostMbits;
+    LOG(FATAL) << "Unknown rewardFormula";
   }
+
   VLOG(1) << "Num states = " << states.size()
           << " avg throughput = " << throughputMBps
           << " MB/sec, avg delay = " << avgDelayMs
@@ -246,6 +298,8 @@ void CongestionControlEnv::Observation::toTensor(torch::Tensor &tensor) const {
   // Dim per history = len(one-hot actions) + 1 (cwnd).
   // Total dim = flattened state dim + history dim
   // (must be kept in synch with `utils.get_observation_length()`)
+  // Note that when useStateSummary is true, `states.size()` is equal to 5
+  // (corresponding to the five aggretation statistics).
   uint32_t historyDim = cfg_.actions.size() + 1;
   uint32_t dim = states.size() * states[0].size() + history.size() * historyDim;
 

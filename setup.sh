@@ -191,7 +191,7 @@ function setup_conda_dependencies() {
 }
 
 function setup_pantheon() {
-  PANTHEON_COMMIT_ID=a8d3ba10ff6acd0654ced3c6a84cd9a2a651c9b9
+  PANTHEON_COMMIT_ID=b6bfdf4630d101cc8175cab3439b264c41b6aff9
 
   if [ -d "$PANTHEON_DIR" ]; then
     echo -e "$PANTHEON_DIR already exists, skipping."

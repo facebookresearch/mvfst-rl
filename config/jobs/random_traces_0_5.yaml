@@ -16,6 +16,6 @@ jobs:
                114.68mbps.trace
                }
             trace_scaling_factor: "${choice: 1., ${uniform_log: 0.5, 2, 1}, [0.1, 0.9]}"
-            loss: "${choice: 0, ${uniform_log: 0.01, 0.1, 0.02}, [0.8, 0.2]}"
+            loss: "${choice: 0, ${uniform_log: 0.01, 0.05, 0.02}, [0.8, 0.2]}"
             queue_type: droptail
             queue_size_packets: "${uniform_log_int: 10, 1000, 100}"

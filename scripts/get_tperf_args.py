@@ -44,7 +44,7 @@ TPERF_FLAGS = [
     "cc_env_norm_ms",
     "cc_env_norm_bytes",
     "cc_env_actions",
-    "cc_env_reward_log_ratio",
+    "cc_env_reward_formula",
     "cc_env_reward_throughput_factor",
     "cc_env_reward_throughput_log_offset",
     "cc_env_reward_delay_factor",

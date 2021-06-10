@@ -101,7 +101,7 @@ def load_logs(path_and_config: Tuple[Path, Any], split_by_job_id: bool = False, 
 
     # Check that we have data from all actors and that it is sufficiently balanced.
     num_actors = config["flags"]["num_actors"]
-    counts = df["actor_id"].groupby(d.actor_id).count()
+    counts = df["actor_id"].groupby(df.actor_id).count()
     actor_ids = set(counts.index)
     missing_actors = [i for i in range(num_actors) if i not in actor_ids]
     if missing_actors:
@@ -751,30 +751,160 @@ def get_paths(pattern):
     return paths
 
 
-pattern = "2020-12-30_05-19-03"
-
+pattern = "2020-12-08_05-29-41"  # cc_env_reward_log_ratio=false
+pattern = ["2020-12-07_20-38-44", "2020-12-07_19-54-42"]
+pattern = "2020-12-07_20-38-44"  # cc_env_reward_log_ratio=true | https://fb.quip.com/BolVAGQ6S8sN
+pattern = "2020-12-11_16-31-35"  # varying a' / b'
+pattern = "2020-12-12_17-01-02"  # env 0
+pattern = "2020-12-28_07-00-40"  # 1+3
+pattern = ["2020-12-28_06-56-55", "2020-12-28_07-00-40"]  # 1,3 & 1+3
+pattern = "2020-12-21_06-07-08"  # reward normalization
+pattern = "2020-12-29_05-26-54"  # varying gamma on envs 1 & 2
+pattern = "2020-12-28_20-31-49"  # 1,2 hyper-parameter search
+pattern = "2020-12-29_10-34-46"  # 0 + combination of other envs
+pattern = "2020-12-29_10-49-19"  # 0 + combination of other envs (lr=1e-4)
+pattern = "2020-12-30_05-19-03"  # hyper-param search #0
+pattern = "2020-12-30_20-44-02"  # hyper-param search #1
+pattern = ["2020-12-30_05-19-03", "2020-12-30_20-44-02"]  # hyper-param #0 & #1
+pattern = ["2020-12-30_05-19-03", "2020-12-31_09-14-59"]  # hyper-param #0 & #2a
+pattern = "2021-01-04_19-26-36"  # hyper-param search #2b (all jobs)
+pattern = "2021-01-04_19-30-20"  # hyper-param search #2b (job 5 only)
+pattern = ["2020-12-28_09-31-33", "2020-12-28_09-33-54"]  # 0,1,2,3,4,5 & 1+2+3+4+5
+pattern = ["2020-12-30_05-19-03", "2020-12-30_20-44-02", "2020-12-31_09-14-59", "2021-01-04_19-26-36"]  # all hyper-params on 0,1,2,3,4,5
+pattern = ["2020-12-31_09-14-59", "2021-01-04_19-26-36"]  # hyper-param 2a+b
+pattern = ["2021-03-01_05-24-44", "2021-02-28_19-12-49"]  # individual models & multi-task models (common seeds: 6874,1234,2345,3456)
+pattern = "2021-02-28_19-18-26"  # re-run best from 2021-01-04_19-26-36 with 1M/5M steps and combinations of job ID as input
+pattern = "2021-02-28_19-12-49"  # re-run best from 2021-01-04_19-26-36 with 1M/5M steps
+pattern = ["2021-03-01_16-40-01", "2021-02-28_19-12-49"]  # lr sweep for 5M steps (+ previous exp with 1M/5M steps and lr=5e-4)
+pattern = "2021-03-02_05-11-55"  # checking if use_job_id_in_{actor,critic} helps
+pattern = "2021-03-02_11-43-49"  # re-run of a=False,c=True on a seed that did not work
+pattern = "2021-03-02_19-01-30"  # re-run of a=False,c=True but with lower learning rates to see if that helps
+pattern = "2021-03-03_08-42-01"  # checking if different learning rates change stability for a=False,c=True
+pattern = "2021-03-05_12-02-04"  # higher entropy cost
+pattern = "2021-03-11_06-21-06"  # 5M steps with lower learning rate and higher entropy
+pattern = ["2021-03-11_06-21-06", "2021-01-04_19-26-36/27"]  # 5M steps with lower lr & higher entropy + previous best 1M
+pattern = "2021-03-03_14-27-22"  # checking if use_job_id_in_{actor,critic} helps (lower lr)
+pattern = "2021-04-12_18-45-38"  # re-run for Arxiv paper
+pattern = "2021-04-25_09-07-21"  # experimenting with entropy_cost at 1M steps
+pattern = "2021-04-26_07-27-51"  # experimenting with entropy_cost at 5M steps for Arxiv paper's ablation result (use_lstm=False)
+pattern = "2021-04-12_18-45-38"  # re-run for Arxiv paper
+pattern = "2021-05-24_09-52-54"  # debugging: with/without normalization per job
+pattern = ["2021-05-24_11-41-46", "2021-05-24_09-52-54"]  # debugging: with/without normalization per job
+pattern = "2021-05-24_16-02-22"  # 10 seeds randomization
+pattern = ["2021-05-24_16-02-22", "2021-05-24_19-18-14"]  # randomization vs baseline (providing job ID to critic)
+pattern = ["2021-05-24_19-18-14", "2021-05-24_16-02-47"]  # baselines with/without normalization per job and job ID to critic
+pattern = ["2021-05-24_16-02-22", "2021-05-24_16-02-47"]  # randomization vs baseline (*not* providing job ID to critic)
+pattern = ["2021-04-25_11-31-53", "2021-04-26_07-27-51", "2021-04-26_08-10-52"]  # all entropy experiments
+pattern = "2021-04-25_11-31-53"  # entropy experiments with lstm
+pattern = "2021-05-25_15-09-20"  # baselines with higher entropy cost
+pattern = "2021-05-26_13-22-45"  # check ability to generalize to very different scenario (low vs. high bandwidth)
+pattern = "2021-05-24_07-09-41"  # debugging: normal run
+pattern = "2021-05-24_07-22-51"  # debugging: with 10 eval actors
+pattern = ["2021-05-24_07-09-41", "2021-05-24_07-22-51", "2021-05-24_11-41-46"]
+pattern = "2021-05-24_19-18-14"  # baseline providing job ID to critic
+pattern = ["2021-05-26_09-26-21", "2021-05-26_09-26-58"]  # generalization abilities
+pattern = ["2021-05-24_16-02-47", "2021-05-24_16-02-22"]  # 10 seeds randomization vs baselines
+pattern = ["2021-05-27_14-10-51", "2021-05-27_12-00-15"]  # varying the hidden size with randomization
+pattern = ["2021-05-28_07-37-01"]  # varying the unroll length
+pattern = ["2021-05-28_10-21-52"]  # varying gamma
+pattern = "2021-05-28_12-29-13"  # varying learning_rate
+pattern = "2021-05-28_14-36-35"  # varying alpha (RMSProp coefficient)
+pattern = "2021-05-28_16-33-09"  # varying RMSProp momentum
+pattern = "2021-05-28_18-33-41"  # varying history_size
+pattern = "2021-05-29_06-11-27"  # varying reward_normalization_coeff
+pattern = "2021-05-29_07-59-41"  # varying end_of_episode_bootstrap
+pattern = "2021-06-02_19-37-54"  # narrower random distribution
+pattern = ["2021-06-02_14-57-11", "2021-06-02_19-37-54"]
+pattern = "2021-06-02_14-57-11"  # use_task_obs_in_critic=true,false
+pattern = "2021-06-02_19-40-20"  # use_task_obs_in_critic=true,false over 5M steps
+pattern = "2021-06-03_09-50-48"  # use reward or not in model
+pattern = ["2021-06-03_13-44-24","2021-06-03_16-22-39"]  # varying entropy_cost
+pattern = "2021-06-03_13-41-36"  # learning rate over 5M steps
+pattern = "2021-06-03_19-55-20"  # shared_ator_critic (5M) -- bugged
+pattern = "2021-06-04_05-17-03"  # shared_actor_critic (1M)
+pattern = "2021-06-03_19-54-07"  # shared_actor_critic (1M) -- bugged
+pattern = "2021-06-04_08-18-22"  # varying learning rate
+pattern = "2021-06-04_05-18-20"  # shared_ator_critic (5M)
 
 # Filter.
-# xp_filter = lambda c: c["flags"]["cc_env_time_window_ms"] == 100
+xp_filter = lambda c: c["flags"]["train_job_ids"] == [0] and c["flags"]["cc_env_reward_delay_log_offset"] == 1
+xp_filter = lambda c: c["flags"]["learning_rate"] > 1e-7 and c["flags"]["seed"] in [1234, 4567, 6789]
+xp_filter = lambda c: c["flags"]["train_job_ids"] in [[0,1,2,3,4,5]]
+xp_filter = lambda c: c["flags"]["cc_env_reward_delay_factor"] == 1
+xp_filter = lambda c: c["flags"]["cc_env_reward_delay_factor"] == 1 and len(c["flags"]["train_job_ids"]) == 1
+xp_filter = lambda c: c["flags"]["train_job_ids"] in [[1],[2]]
+xp_filter = lambda c: c["flags"]["train_job_ids"] == [1]
+xp_filter = lambda c: c["flags"]["seed"] == 5937 or c["git"]["commit"] == "e681426054e133acbad1f6621da2f0bcff59c364"  # best h0 + h1
+xp_filter = lambda c: c["flags"]["seed"] == 5937 or c["git"]["commit"] == "7399213029dd235049f122837dd86baa3dce4430"  # best h0 + h2
+xp_filter = lambda c: (c["flags"]["seed"] == 5937 or c["git"]["commit"] == "7399213029dd235049f122837dd86baa3dce4430") and c["flags"]["hidden_size"] == 1024  # TMP
+xp_filter = lambda c: c["flags"]["seed"] < 3000
+xp_filter = lambda c: c["flags"]["seed"] in [6874,1234,2345,3456] and c["flags"]["total_steps"] == 1_000_000
+xp_filter = lambda c: c["flags"]["total_steps"] == 5_000_000
+xp_filter = lambda c: c["flags"]["learning_rate"] == 5e-4 and c["flags"]["seed"] in [33]
+xp_filter = lambda c: c["flags"]["seed"] == 6874 or (c["flags"]["learning_rate"] == 1e-4 and not c["flags"]["use_job_id_in_critic"] and c["flags"]["entropy_cost"] == 0.005 and c["flags"]["seed"] == 4)
+xp_filter = lambda c: c["flags"]["cc_env_history_size"] == 20
+xp_filter = lambda c: f'{c["flags"]["entropy_cost"]:e}'.startswith("1") and c["flags"]["entropy_cost"] > 1e-5
+xp_filter = lambda c: not c["flags"]["reward_normalization_stats_per_job"] or len(c["flags"]["train_job_ids"]) == 1
+xp_filter = lambda c: c["flags"]["hidden_size"] in [128, 1024]
+xp_filter = lambda c: c["flags"]["end_of_episode_bootstrap"] and c["flags"]["seed"] == 2
+xp_filter = lambda c: c["flags"]["seed"] == 5
+xp_filter = lambda c: c["flags"]["reward_normalization"]
+xp_filter = lambda c: c["flags"]["entropy_cost"] < 1e-2
 xp_filter = None
+
+
 
 # Criterion to split plots.
 # xp_pivot = lambda c: (
 #     "rdelay=%s" % c["flags"]["cc_env_reward_delay_factor"],
 #     "rlost=%s" % c["flags"]["cc_env_reward_packet_loss_factor"],
 # )
-# xp_pivot = None  # auto
 # xp_pivot = lambda c: f"rdelay={c['flags']['cc_env_reward_delay_factor']}"
+xp_pivot = lambda c: f'offsets={c["flags"]["cc_env_reward_delay_log_offset"]}, {c["flags"]["cc_env_reward_throughput_log_offset"]}'
+xp_pivot = lambda c: f'seed={c["flags"]["seed"]},lr={c["flags"]["learning_rate"]:.0e}'
+xp_pivot = lambda c: f'id={",".join(map(str, c["flags"]["train_job_ids"]))},s={c["flags"]["seed"]}'
+xp_pivot = lambda c: f'job_ids={c["flags"]["train_job_ids"]}'
+xp_pivot = lambda c: f'ids={c["flags"]["train_job_ids"]},b={c["flags"]["cc_env_reward_delay_factor"]}'
+xp_pivot = lambda c: (f'ids={c["flags"]["train_job_ids"]},t={c["flags"]["cc_env_reward_throughput_log_offset"]},'
+                      f'd={c["flags"]["cc_env_reward_delay_log_offset"]},eb={int(c["flags"]["end_of_episode_bootstrap"])}')
+xp_pivot = lambda c: f'tlo={c["flags"]["cc_env_reward_throughput_log_offset"]}'
+xp_pivot = None  # auto
+xp_pivot = lambda c: (f'd={c["flags"]["cc_env_reward_delay_factor"]},p={c["flags"]["cc_env_reward_packet_loss_factor"]}')
+xp_pivot = lambda c: f'seed={c["flags"]["seed"]}'
+xp_pivot = lambda c: f'N={c["flags"]["total_steps"]}'
+xp_pivot = lambda c: f'seed={c["flags"]["seed"]},N={c["flags"]["total_steps"]}'
+xp_pivot = lambda c: f'a={c["flags"]["use_job_id_in_actor"]},c={c["flags"]["use_job_id_in_critic"]}'
+xp_pivot = lambda c: f'e={c["flags"]["learning_rate"]},a={c["flags"]["use_job_id_in_actor"]},c={c["flags"]["use_job_id_in_critic"]}'
+xp_pivot = lambda c: f'lstm={c["flags"]["use_lstm"]}'
+xp_pivot = lambda c: f'task_obs={c["flags"]["use_task_obs_in_critic"]}'
 xp_pivot = lambda c: "ALL"
+xp_pivot = lambda c: f'lr={c["flags"]["learning_rate"]}'
 
 # Criterion to split individual curves within each plot.
 # run_pivot = lambda c: "actions=%s" % c["flags"]["num_actions"]
-# run_pivot = lambda c: "ALL"
+run_pivot = lambda c: f'j={c["flags"]["train_job_ids"]}'
+run_pivot = lambda c: f'N={c["flags"]["total_steps"]}'
+run_pivot = lambda c: f'lr={c["flags"]["learning_rate"]}'
+run_pivot = lambda c: (f'id_in_actor={c["flags"]["use_job_id_in_actor"]}', f'id_in_critic={c["flags"]["use_job_id_in_critic"]}')
+run_pivot = lambda c: f'entropy={c["flags"]["entropy_cost"]}'
+run_pivot = lambda c: "ALL"
+run_pivot = lambda c: f'lstm={c["flags"]["use_lstm"]}'
+run_pivot = lambda c: (f'entropy_cost={c["flags"]["entropy_cost"]}',)
+run_pivot = lambda c: f'h={c["flags"]["cc_env_history_size"]}'
+run_pivot = {"ignore": ["jobs_random", "seed", "reward_normalization_stats_per_job", "train_job_ids", "use_job_id_in_critic"]}
+run_pivot = lambda c: f'entropy={c["flags"]["entropy_cost"]:.5f}'
+run_pivot = {"ignore": ["jobs_random", "seed", "num_actors_eval", "train_job_ids"]}
+run_pivot = {"ignore": ["jobs_random", "seed", "train_job_ids"]}
+run_pivot = {"ignore": ["seed", "observation_length"]}
 run_pivot = None  # auto
+run_pivot = {"ignore": ["train_jobs", "seed"]}
+run_pivot = lambda c: f'J={c["flags"]["train_jobs"]["jobs"]["sampled_scenario"]["delay"]}'
+run_pivot = {"ignore": ["seed", "use_reward"]}
+run_pivot = {"ignore": "seed"}
 
 paths = get_paths(pattern)
 assert paths, f"no valid experiment data found for pattern '{pattern}'"
-data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=False, actors="eval")
+data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=True, actors="eval")
 # -
 
 # ## Training curves
@@ -782,15 +912,125 @@ data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=F
 # +
 # %%time
 # %%opts Curve {+axiswise}
-# %%opts NdOverlay [legend_position='bottom_right', show_legend=False]
+# %%opts NdOverlay [legend_position='bottom_right', show_legend=True]
 
 y = "mean_avg_reward"
 # y = "mean_episode_return"
 # y = 'mean_episode_step'
-# y = "mean_cwnd_mean"
-# y = "mean_delay_mean"
-# y = "mean_throughput_mean"
-# y = "log_th/dl"
+# y = "mean_episode_return"
+y = "mean_delay_mean"
+y = "log_th/dl"
+y = "mean_throughput_mean"
+y = "mean_cwnd_mean"
+y = "mean_avg_reward"
+# y = 'total_loss'
+# y = 'pg_loss'
+# y = 'baseline_loss'
+# y = 'entropy_loss'
+# y = 'learner_queue_size'
+plot(
+    data,
+    y=y,
+    y_min=None,
+    y_max=None,
+    cols=4,
+    palette="Colorblind",
+    subsample=100,
+)
+
+# +
+# %%opts Curve {+axiswise}
+# %%opts NdOverlay [legend_position='bottom_right', show_legend=False]
+
+# y = "mean_episode_return"
+# y = 'mean_episode_step'
+# y = "mean_episode_return"
+y = "log_th/dl"
+y = "mean_delay_mean"
+y = "mean_cwnd_mean"
+y = "mean_throughput_mean"
+y = "mean_avg_reward"
+# y = 'total_loss'
+# y = 'pg_loss'
+# y = 'baseline_loss'
+# y = 'entropy_loss'
+# y = 'learner_queue_size'
+plot(
+    data,
+    y=y,
+    y_min=None,
+    y_max=None,
+    cols=4,
+    palette="Colorblind",
+    subsample=100,
+)
+
+# +
+# %%opts Curve {+axiswise}
+# %%opts NdOverlay [legend_position='bottom_right', show_legend=False]
+
+# y = "mean_episode_return"
+# y = 'mean_episode_step'
+# y = "mean_episode_return"
+y = "mean_avg_reward"
+y = "mean_delay_mean"
+y = "mean_throughput_mean"
+y = "mean_cwnd_mean"
+y = "log_th/dl"
+# y = 'total_loss'
+# y = 'pg_loss'
+# y = 'baseline_loss'
+# y = 'entropy_loss'
+# y = 'learner_queue_size'
+plot(
+    data,
+    y=y,
+    y_min=None,
+    y_max=None,
+    cols=4,
+    palette="Colorblind",
+    subsample=100,
+)
+
+# +
+# %%opts Curve {+axiswise}
+# %%opts NdOverlay [legend_position='bottom_right', show_legend=False]
+
+# y = "mean_episode_return"
+# y = 'mean_episode_step'
+# y = "mean_episode_return"
+y = "mean_avg_reward"
+y = "mean_throughput_mean"
+y = "mean_delay_mean"
+y = "log_th/dl"
+y = "mean_cwnd_mean"
+# y = 'total_loss'
+# y = 'pg_loss'
+# y = 'baseline_loss'
+# y = 'entropy_loss'
+# y = 'learner_queue_size'
+plot(
+    data,
+    y=y,
+    y_min=None,
+    y_max=None,
+    cols=4,
+    palette="Colorblind",
+    subsample=100,
+)
+
+# +
+# %%opts Curve {+axiswise}
+# %%opts NdOverlay [legend_position='bottom_right', show_legend=False]
+
+# y = "mean_episode_return"
+# y = 'mean_episode_step'
+# y = "mean_episode_return"
+y = "mean_avg_reward"
+y = "mean_cwnd_mean"
+y = "mean_throughput_mean"
+y = "log_th/dl"
+y = "mean_delay_mean"
 # y = 'total_loss'
 # y = 'pg_loss'
 # y = 'baseline_loss'
@@ -811,14 +1051,14 @@ plot(
 
 # +
 max_cols_per_hiplot = 10
-show_per_experiment = True
+show_per_experiment = False
 x = "step"
 all_y = [
     #"mean_episode_return",
     #"mean_episode_step",
-    "mean_avg_reward",
+    #"mean_avg_reward",
     "mean_delay_mean",
-    "mean_cwnd_mean",
+    #"mean_cwnd_mean",
     "mean_throughput_mean",
     "log_th/dl",
 ]
@@ -836,3 +1076,5 @@ if show_per_experiment:
     # Display HiPlot for each experiment.
     for experiment_id, hip_data in per_experiment_data.items():
         hip_display(experiment_id, hip_data)
+# -
+
