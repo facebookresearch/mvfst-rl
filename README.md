@@ -8,6 +8,15 @@ off-policy correction. It is built upon the following components:
 2. [torchbeast](https://github.com/facebookresearch/torchbeast), a PyTorch implementation of asynchronous distributed deep RL.
 3. [Pantheon](https://github.com/StanfordSNR/pantheon), a set of calibrated network emulators.
 
+### MTEnv API
+
+If your objective is to experiment with new RL algorithms on congestion control tasks, you are encouraged
+to switch to the [mtenv](https://github.com/facebookresearch/mvfst-rl/tree/mtenv) branch.
+
+That branch implements in particular an [MTEnv](https://github.com/facebookresearch/mtenv)-compatible API
+that makes it easy to define a multi-task environment and interact with it, independently of the more complex
+IMPALA-based learning framework this project is based on.
+
 ### Asynchronous RL Agent
 
 ![alt text](figures/rl_agent.png "RL Agent")
