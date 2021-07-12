@@ -1,0 +1,95 @@
+defaults:
+    - base_jobs
+
+jobs:
+    ### The three original jobs IDs 3 -> 5.
+
+    #0
+    india_to_aws_india:
+        desc: >-
+            Calibrated to the real path from India to AWS India
+            (https://pantheon.stanford.edu/result/251/)
+        delay: 27
+        uplink:
+            trace: 100.42mbps.trace
+            queue_type: droptail
+            queue_size_packets: 173
+    #1
+    aws_korea_to_china:
+        desc: >-
+            Calibrated to the real path from AWS Korea to China
+            (https://pantheon.stanford.edu/result/361/)
+        delay: 51
+        uplink:
+            trace: 77.72mbps.trace
+            loss: 0.0006
+            queue_type: droptail
+            queue_size_packets: 94
+    #2
+    aws_california_to_mexico:
+        desc: >-
+            Calibrated to the real path from AWS California to Mexico
+            (https://pantheon.stanford.edu/result/353/)
+        delay: 45
+        uplink:
+            trace: 114.68mbps.trace
+            queue_type: droptail
+            queue_size_packets: 450
+
+    ### Two random variants for each job.
+
+    #3
+    india_to_aws_india_v1:
+        delay: 55
+        uplink:
+            trace: 100.42mbps.trace
+            trace_scaling_factor: 1.5
+            queue_type: droptail
+            queue_size_packets: 250
+
+    #4
+    india_to_aws_india_v2:
+        delay: 18
+        uplink:
+            trace: 100.42mbps.trace
+            trace_scaling_factor: 0.75
+            queue_type: droptail
+            queue_size_packets: 150
+ 
+    #5
+    aws_korea_to_china_v1:
+        delay: 88
+        uplink:
+            trace: 77.72mbps.trace
+            trace_scaling_factor: 0.8
+            loss: 0.0006
+            queue_type: droptail
+            queue_size_packets: 200
+
+    #6
+    aws_korea_to_china_v2:
+        delay: 23
+        uplink:
+            trace: 77.72mbps.trace
+            trace_scaling_factor: 1.7
+            loss: 0.0006
+            queue_type: droptail
+            queue_size_packets: 500
+
+    #7
+    aws_california_to_mexico_v1:
+        delay: 37
+        uplink:
+            trace: 114.68mbps.trace
+            trace_scaling_factor: 1.4
+            queue_type: droptail
+            queue_size_packets: 75
+
+    #8
+    aws_california_to_mexico_v2:
+        delay: 62
+        uplink:
+            trace: 114.68mbps.trace
+            trace_scaling_factor: 0.666
+            queue_type: droptail
+            queue_size_packets: 190

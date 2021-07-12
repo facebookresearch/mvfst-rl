@@ -1,3 +1,18 @@
+# The mtenv branch
+
+The ``mtenv`` branch provides extra features (currently in experimental state) to allow learning
+models that generalize across a wide range of network conditions.
+In particular, compared to the current state of the master branch, it allows:
+
+- Defining scenarios where network settings are randomly sampled in each episode
+- Accessing the RL environment through APIs compatible with ``gym.Env`` or ``MTEnv``, thus
+  making it easier to experiment with (possibly multi-task) algorithms independent of TorchBeast
+
+For more details on the second point, please refer to its dedicated
+[README](https://github.com/facebookresearch/mvfst-rl/tree/mtenv/gym_env).
+
+If you have any question regarding these features, please do not hesitate to open an issue on Github.
+
 # mvfst-rl
 
 `mvfst-rl` is a framework for network congestion control in the QUIC transport protocol

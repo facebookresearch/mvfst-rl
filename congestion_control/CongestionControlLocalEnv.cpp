@@ -11,8 +11,8 @@
 namespace quic {
 
 namespace {
-// This should be train/learner.py --hidden_size + 1
-const int kLSTMHiddenSize = 1024 + 1;
+// This should be flags.hidden_size (+ 1 if flags.use_reward is True)
+const int kLSTMHiddenSize = 256;
 }
 
 CongestionControlLocalEnv::CongestionControlLocalEnv(
@@ -68,18 +68,23 @@ void CongestionControlLocalEnv::loop() {
     VLOG(2) << "Episode step = " << episode_step
             << ", total return = " << episode_return;
 
-    // env_inputs: (obs, reward, done)
+    // env_outputs: (obs, reward, done)
     auto reward_tensor = torch::from_blob(&reward_, {1}, at::kFloat);
     auto done_tensor = torch::from_blob(&done, {1}, at::kBool);
-    auto env_inputs = at::ivalue::Tuple::create({tensor_.reshape({1, -1}),
-                                                 std::move(reward_tensor),
-                                                 std::move(done_tensor)});
+    auto env_outputs = at::ivalue::Tuple::create({tensor_.reshape({1, -1}),
+                                                  std::move(reward_tensor),
+                                                  std::move(done_tensor)});
 
-    // inputs: (last_action, (obs, reward, done), core_state)
+    // task observation: although this is not supported in the C++ model, it
+    // still needs to be provided as input
+    auto task_obs = torch::zeros({1, 0}, at::kFloat);
+
+    // inputs: (last_action, (obs, reward, done), task_obs, core_state)
     auto last_action_tensor =
         torch::from_blob(&action.cwndAction, {1}, at::kLong);
     quic::utils::vector<torch::IValue> inputs{std::move(last_action_tensor),
-                                              std::move(env_inputs),
+                                              std::move(env_outputs),
+                                              std::move(task_obs),
                                               std::move(core_state)};
     const auto &outputs = module_.forward(inputs).toTuple();
 

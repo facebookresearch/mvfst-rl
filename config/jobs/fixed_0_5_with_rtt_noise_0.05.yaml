@@ -1,0 +1,72 @@
+defaults:
+    - base_jobs
+
+jobs:
+    #0
+    nepal_to_aws_india:
+        desc: >-
+            Calibrated to the real path from Nepal to AWS India
+            (https://pantheon.stanford.edu/result/188/)
+        delay: 28
+        rtt_noise_std: 0.05
+        uplink:
+            trace: 0.57mbps-poisson.trace
+            loss: 0.0477
+            queue_type: droptail
+            queue_size_packets: 14
+    #1
+    mexico_cellular_to_aws_california:
+        desc: >-
+            Calibrated to the real path from Mexico cellular to AWS California
+            (https://pantheon.stanford.edu/result/196/)
+        delay: 88
+        rtt_noise_std: 0.05
+        uplink:
+            trace: 2.64mbps-poisson.trace
+            queue_type: droptail
+            queue_size_packets: 130
+    #2
+    aws_brazil_to_colombia_cellular:
+        desc: >-
+            Calibrated to the real path from AWS Brazil to Colombia cellular
+            (https://pantheon.stanford.edu/result/339/)
+        delay: 130
+        rtt_noise_std: 0.05
+        uplink:
+            trace: 3.04mbps-poisson.trace
+            queue_type: droptail
+            queue_size_packets: 426
+    #3
+    india_to_aws_india:
+        desc: >-
+            Calibrated to the real path from India to AWS India
+            (https://pantheon.stanford.edu/result/251/)
+        delay: 27
+        rtt_noise_std: 0.05
+        uplink:
+            trace: 100.42mbps.trace
+            queue_type: droptail
+            queue_size_packets: 173
+    #4
+    aws_korea_to_china:
+        desc: >-
+            Calibrated to the real path from AWS Korea to China
+            (https://pantheon.stanford.edu/result/361/)
+        delay: 51
+        rtt_noise_std: 0.05
+        uplink:
+            trace: 77.72mbps.trace
+            loss: 0.0006
+            queue_type: droptail
+            queue_size_packets: 94
+    #5
+    aws_california_to_mexico:
+        desc: >-
+            Calibrated to the real path from AWS California to Mexico
+            (https://pantheon.stanford.edu/result/353/)
+        delay: 45
+        rtt_noise_std: 0.05
+        uplink:
+            trace: 114.68mbps.trace
+            queue_type: droptail
+            queue_size_packets: 450

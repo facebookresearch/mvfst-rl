@@ -1,11 +1,11 @@
 /*
-* Copyright (c) Facebook, Inc. and its affiliates.
-* All rights reserved.
-*
-* This source code is licensed under the license found in the
-* LICENSE file in the root directory of this source tree.
-*
-*/
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
 #include <glog/logging.h>
 
 #include <fizz/crypto/Utils.h>
@@ -30,8 +30,8 @@ DEFINE_string(
 DEFINE_int64(cc_env_actor_id, 0,
              "For use in training to uniquely identify an actor across "
              "episodic connections to RL server.");
-DEFINE_int64(cc_env_job_id, -1,
-             "Index of the current job in the list of active jobs. -1 if undefined.");
+DEFINE_int64(cc_env_job_count, -1,
+             "Job counter during training. -1 if undefined.");
 DEFINE_string(cc_env_model_file, "traced_model.pt",
               "PyTorch traced model file for local mode");
 DEFINE_string(
@@ -57,12 +57,19 @@ DEFINE_double(cc_env_norm_bytes, 1000.0,
 DEFINE_string(cc_env_actions, "0,/2,-10,+10,*2",
               "List of actions specifying how cwnd should be updated. The "
               "first action is required to be 0 (no-op action).");
-DEFINE_bool(
-    cc_env_reward_log_ratio, false,
-    "If true, then instead of "
-    " a * throughput - b * delay - c * loss "
-    "we use as reward "
-    " a * log(a' + throughput) - b * log(b' + delay) - c * log(c' + loss)");
+DEFINE_double(cc_env_uplink_bandwidth, 0.0,
+              "Maximum bandwidth (in MBytes/s) achievable by the uplink");
+DEFINE_int32(cc_env_uplink_queue_size_bytes, 1,
+             "Size of the uplink queue (in bytes)");
+DEFINE_double(
+    cc_env_base_rtt, 1.0,
+    "Minimum RTT that can be achieved based on network settings (in ms)");
+DEFINE_string(cc_env_reward_formula, "log_ratio",
+              "Which formula to use for the reward, among: "
+              "linear, log_ratio, min_throughput "
+              "(see pantheon_env.py for details)");
+DEFINE_double(cc_env_reward_delay_offset, 0.1,
+              "Offset to remove from the delay when computing the reward (o)");
 DEFINE_double(cc_env_reward_throughput_factor, 0.1,
               "Throughput multiplier in reward (a)");
 DEFINE_double(cc_env_reward_throughput_log_offset, 1.0,
@@ -75,6 +82,18 @@ DEFINE_double(cc_env_reward_packet_loss_factor, 0.0,
               "Packet loss multiplier in reward (c)");
 DEFINE_double(cc_env_reward_packet_loss_log_offset, 1.0,
               "Offset to add to packet loss in log version (c')");
+DEFINE_double(cc_env_reward_min_throughput_ratio, 0.9,
+              "Min ratio of the maximum achievable throughput / target cwnd "
+              "that we want to reach (r).");
+DEFINE_double(cc_env_reward_max_throughput_ratio, 1.0,
+              "Max ratio of the maximum achievable throughput / target cwnd "
+              "that we want to reach (r).");
+DEFINE_double(
+    cc_env_reward_n_packets_offset, 1.0,
+    "Offset to add to the estimated number of packets in the queue (k).");
+DEFINE_double(cc_env_reward_uplink_queue_max_fill_ratio, 0.5,
+              "We allow the uplink queue to be filled up to this ratio without "
+              "penalty (f)");
 DEFINE_bool(cc_env_reward_max_delay, true,
             "Whether to take max delay over observations in reward."
             "Otherwise, avg delay is used.");
@@ -83,6 +102,20 @@ DEFINE_uint32(cc_env_fixed_cwnd, 10,
 DEFINE_uint64(cc_env_min_rtt_window_length_us,
               quic::kMinRTTWindowLength.count(),
               "Window length (in us) of min RTT filter used to estimate delay");
+DEFINE_double(
+    cc_env_ack_delay_avg_coeff, 0.1,
+    "Moving average coefficient used to compute the average ACK delay, as "
+    "well as the average total RTT (including ACK delay). "
+    "This is the weight of new observations: higher values update the average "
+    "faster.");
+DEFINE_uint32(cc_env_bandwidth_min_window_duration_ms, 100,
+              "Minimum duration over which the bandwidth is computed (in ms)");
+DEFINE_double(cc_env_rtt_noise_std, 0.,
+              "Standard deviation of the noise added to RTT measurements");
+DEFINE_double(cc_env_obs_scaling, 1.0,
+              "Factor by which the observation vector should be scaled");
+DEFINE_string(cc_env_stats_file, "",
+              "Path to file where some statistics are saved (if provided)");
 
 using namespace quic::traffic_gen;
 using Config = quic::CongestionControlEnv::Config;
@@ -106,7 +139,7 @@ makeRLCongestionControllerFactory() {
   cfg.modelFile = FLAGS_cc_env_model_file;
   cfg.rpcAddress = FLAGS_cc_env_rpc_address;
   cfg.actorId = FLAGS_cc_env_actor_id;
-  cfg.jobId = FLAGS_cc_env_job_id;
+  cfg.jobCount = FLAGS_cc_env_job_count;
 
   if (FLAGS_cc_env_agg == "time") {
     cfg.aggregation = Config::Aggregation::TIME_WINDOW;
@@ -126,17 +159,57 @@ makeRLCongestionControllerFactory() {
 
   cfg.parseActionsFromString(FLAGS_cc_env_actions);
 
-  cfg.rewardLogRatio = FLAGS_cc_env_reward_log_ratio;
+  if (FLAGS_cc_env_reward_formula == "linear") {
+    cfg.rewardFormula = Config::RewardFormula::LINEAR;
+  } else if (FLAGS_cc_env_reward_formula == "log_ratio") {
+    cfg.rewardFormula = Config::RewardFormula::LOG_RATIO;
+  } else if (FLAGS_cc_env_reward_formula == "min_throughput") {
+    cfg.rewardFormula = Config::RewardFormula::MIN_THROUGHPUT;
+  } else if (FLAGS_cc_env_reward_formula == "target_cwnd") {
+    cfg.rewardFormula = Config::RewardFormula::TARGET_CWND;
+  } else if (FLAGS_cc_env_reward_formula == "target_cwnd_shaped") {
+    cfg.rewardFormula = Config::RewardFormula::TARGET_CWND_SHAPED;
+  } else if (FLAGS_cc_env_reward_formula == "higher_is_better") {
+    cfg.rewardFormula = Config::RewardFormula::HIGHER_IS_BETTER;
+  } else if (FLAGS_cc_env_reward_formula == "above_cwnd") {
+    cfg.rewardFormula = Config::RewardFormula::ABOVE_CWND;
+  } else if (FLAGS_cc_env_reward_formula == "cwnd_range") {
+    cfg.rewardFormula = Config::RewardFormula::CWND_RANGE;
+  } else if (FLAGS_cc_env_reward_formula == "cwnd_range_soft") {
+    cfg.rewardFormula = Config::RewardFormula::CWND_RANGE_SOFT;
+  } else if (FLAGS_cc_env_reward_formula == "cwnd_tradeoff") {
+    cfg.rewardFormula = Config::RewardFormula::CWND_TRADEOFF;
+  } else if (FLAGS_cc_env_reward_formula == "below_target_cwnd") {
+    cfg.rewardFormula = Config::RewardFormula::BELOW_TARGET_CWND;
+  } else {
+    LOG(FATAL) << "Unknown cc_env_reward_formula: "
+               << FLAGS_cc_env_reward_formula;
+  }
+
+  cfg.uplinkBandwidth = FLAGS_cc_env_uplink_bandwidth;
+  cfg.uplinkQueueSizeBytes = FLAGS_cc_env_uplink_queue_size_bytes;
+  cfg.baseRTT = FLAGS_cc_env_base_rtt;
+  cfg.delayOffset = FLAGS_cc_env_reward_delay_offset;
   cfg.throughputFactor = FLAGS_cc_env_reward_throughput_factor;
   cfg.throughputLogOffset = FLAGS_cc_env_reward_throughput_log_offset;
   cfg.delayFactor = FLAGS_cc_env_reward_delay_factor;
   cfg.delayLogOffset = FLAGS_cc_env_reward_delay_log_offset;
   cfg.packetLossFactor = FLAGS_cc_env_reward_packet_loss_factor;
   cfg.packetLossLogOffset = FLAGS_cc_env_reward_packet_loss_log_offset;
+  cfg.minThroughputRatio = FLAGS_cc_env_reward_min_throughput_ratio;
+  cfg.maxThroughputRatio = FLAGS_cc_env_reward_max_throughput_ratio;
+  cfg.nPacketsOffset = FLAGS_cc_env_reward_n_packets_offset;
+  cfg.uplinkQueueMaxFillRatio = FLAGS_cc_env_reward_uplink_queue_max_fill_ratio;
   cfg.maxDelayInReward = FLAGS_cc_env_reward_max_delay;
   cfg.fixedCwnd = FLAGS_cc_env_fixed_cwnd;
   cfg.minRTTWindowLength =
       std::chrono::microseconds(FLAGS_cc_env_min_rtt_window_length_us);
+  cfg.rttNoiseStd = FLAGS_cc_env_rtt_noise_std;
+  cfg.ackDelayAvgCoeff = FLAGS_cc_env_ack_delay_avg_coeff;
+  cfg.bandwidthMinWindowDuration =
+      std::chrono::milliseconds(FLAGS_cc_env_bandwidth_min_window_duration_ms);
+  cfg.obsScaling = FLAGS_cc_env_obs_scaling;
+  cfg.statsFile = FLAGS_cc_env_stats_file;
 
   auto envFactory = std::make_shared<quic::CongestionControlEnvFactory>(cfg);
   return std::make_shared<quic::RLCongestionControllerFactory>(envFactory);

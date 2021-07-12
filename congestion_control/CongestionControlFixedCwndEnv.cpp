@@ -1,11 +1,11 @@
 /*
-* Copyright (c) Facebook, Inc. and its affiliates.
-* All rights reserved.
-*
-* This source code is licensed under the license found in the
-* LICENSE file in the root directory of this source tree.
-*
-*/
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
 #include "CongestionControlFixedCwndEnv.h"
 
 namespace quic {
@@ -26,7 +26,9 @@ void CongestionControlFixedCwndEnv::onObservation(Observation &&obs,
   const float lastCwndObs = obs.history.back().cwnd;
   // Convert value to bytes (rounded).
   const uint64_t currentCwndBytes =
-      static_cast<uint64_t>(lastCwndObs * normBytes() + 0.5f);
+      static_cast<uint64_t>(lastCwndObs * conn_.transportSettings.maxCwndInMss *
+                                conn_.udpSendPacketLen +
+                            0.5f);
 
   Action action; // the action we will take
 

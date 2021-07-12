@@ -191,7 +191,7 @@ function setup_conda_dependencies() {
 }
 
 function setup_pantheon() {
-  PANTHEON_COMMIT_ID=ba8925867a794e687df407911292540cb826eede
+  PANTHEON_COMMIT_ID=751a054e2b64349b50f25967d36a030ca8f992f5
 
   if [ -d "$PANTHEON_DIR" ]; then
     echo -e "$PANTHEON_DIR already exists, skipping."
@@ -220,7 +220,7 @@ function setup_pantheon() {
   sudo apt-get -y install debhelper autotools-dev dh-autoreconf iptables \
                           pkg-config iproute2
   # Disable cache directory because of potential permission issues with sudo.
-  sudo python2 -m pip install --no-cache-dir matplotlib numpy tabulate pyyaml
+  sudo python2 -m pip install --no-cache-dir matplotlib numpy psutil pyyaml tabulate
 
   if [ "$SKIP_MM_BINARIES" = false ]; then
     # Copy mahimahi binaries to conda env (to be able to run in cluster)

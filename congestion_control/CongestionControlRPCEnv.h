@@ -35,7 +35,8 @@ class CongestionControlRPCEnv : public CongestionControlEnv {
 
   void loop(const std::string& address);
 
-  static torchbeast::CallRequest makeCallRequest(int64_t actor_id,
+  static torchbeast::CallRequest makeCallRequest(int64_t actorId,
+                                                 int64_t jobCount,
                                                  const torch::Tensor& obs,
                                                  float reward, bool done);
   static uint32_t getActionFromCallResponse(torchbeast::CallResponse& resp);

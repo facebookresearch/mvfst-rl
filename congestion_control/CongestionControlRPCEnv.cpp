@@ -106,7 +106,7 @@ void CongestionControlRPCEnv::loop(const std::string &address) {
     VLOG(2) << "Episode step = " << episode_step
             << ", total return = " << episode_return;
 
-    const auto &req = makeCallRequest(actorId_, tensor_, reward_, done);
+    const auto &req = makeCallRequest(actorId_, cfg_.jobCount, tensor_, reward_, done);
     observationReady_ = false; // Back to waiting
 
     stream->Write(req);
@@ -125,6 +125,7 @@ void CongestionControlRPCEnv::loop(const std::string &address) {
 }
 
 CallRequest CongestionControlRPCEnv::makeCallRequest(int64_t actorId,
+                                                     int64_t jobCount,
                                                      const torch::Tensor &obs,
                                                      float reward, bool done) {
   // We need the same run Id across episodes per actor to ensure reconnects to
@@ -134,15 +135,16 @@ CallRequest CongestionControlRPCEnv::makeCallRequest(int64_t actorId,
 
   TensorNest actorIdNest(torch::from_blob(&actorId, {}, at::kLong));
   TensorNest runIdNest(torch::from_blob(&runId, {}, at::kLong));
+  TensorNest jobCountNest(torch::from_blob(&jobCount, {}, at::kLong));
   TensorNest obsNest(obs);
   TensorNest rewardNest(torch::from_blob(&reward, {}, at::kFloat));
   TensorNest doneNest(torch::from_blob(&done, {}, at::kBool));
 
-  // Input is an ArrayNest of (actor_id, run_id, (observation, reward, done)).
+  // Input is an ArrayNest of (actor_id, run_id, job_count, (observation, reward, done)).
   TensorNest stepNest(
       quic::utils::vector<TensorNest>({obsNest, rewardNest, doneNest}));
   TensorNest inputs(
-      quic::utils::vector<TensorNest>({actorIdNest, runIdNest, stepNest}));
+      quic::utils::vector<TensorNest>({actorIdNest, runIdNest, jobCountNest, stepNest}));
 
   CallRequest req;
   req.set_function("inference");

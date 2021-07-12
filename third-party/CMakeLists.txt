@@ -62,7 +62,6 @@ target_link_libraries(
   mvfst::mvfst_state_functions
   mvfst::mvfst_state_machine
   mvfst::mvfst_state_pacing_functions
-  mvfst::mvfst_state_qpr_functions
   mvfst::mvfst_state_simple_frame_functions
   mvfst::mvfst_state_stream
   mvfst::mvfst_state_stream_functions

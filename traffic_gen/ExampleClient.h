@@ -1,11 +1,11 @@
 /*
-* Copyright (c) Facebook, Inc. and its affiliates.
-* All rights reserved.
-*
-* This source code is licensed under the license found in the
-* LICENSE file in the root directory of this source tree.
-*
-*/
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
 #pragma once
 
 #include <iostream>
@@ -16,8 +16,8 @@
 #include <glog/logging.h>
 #include <quic/api/QuicSocket.h>
 #include <quic/client/QuicClientTransport.h>
-#include <quic/fizz/client/handshake/FizzClientQuicHandshakeContext.h>
 #include <quic/congestion_control/CongestionControllerFactory.h>
+#include <quic/fizz/client/handshake/FizzClientQuicHandshakeContext.h>
 
 #include <traffic_gen/Utils.h>
 
@@ -26,10 +26,9 @@ namespace traffic_gen {
 
 class ExampleClient : public quic::QuicSocket::ConnectionCallback,
                       public quic::QuicSocket::ReadCallback,
-                      public quic::QuicSocket::WriteCallback,
-                      public quic::QuicSocket::DataExpiredCallback {
- public:
-  ExampleClient(const std::string& host, uint16_t port,
+                      public quic::QuicSocket::WriteCallback {
+public:
+  ExampleClient(const std::string &host, uint16_t port,
                 CongestionControlType cc_algo = CongestionControlType::Cubic,
                 std::shared_ptr<CongestionControllerFactory> ccFactory =
                     std::make_shared<DefaultCongestionControllerFactory>())
@@ -52,10 +51,10 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
                           << " bytes on stream=" << streamId;
   }
 
-  void readError(
-      quic::StreamId streamId,
-      std::pair<quic::QuicErrorCode, folly::Optional<folly::StringPiece>>
-          error) noexcept override {
+  void
+  readError(quic::StreamId streamId,
+            std::pair<quic::QuicErrorCode, folly::Optional<folly::StringPiece>>
+                error) noexcept override {
     LOG(ERROR) << "ExampleClient failed read from stream=" << streamId
                << ", error=" << toString(error);
     // A read error only terminates the ingress portion of the stream state.
@@ -92,9 +91,9 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
 
   void onConnectionError(
       std::pair<quic::QuicErrorCode, std::string> error) noexcept override {
-    LOG_EVERY_N(ERROR, 100) << "ExampleClient error connecting to "
-                            << addr_.describe() << " - "
-                            << toString(error.first) << ". Trying again...";
+    LOG_EVERY_N(ERROR, 100)
+        << "ExampleClient error connecting to " << addr_.describe() << " - "
+        << toString(error.first) << ". Trying again...";
     connect();
   }
 
@@ -111,12 +110,6 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
           error) noexcept override {
     LOG(ERROR) << "ExampleClient write error with stream=" << id
                << " error=" << toString(error);
-  }
-
-  void onDataExpired(StreamId streamId, uint64_t newOffset) noexcept override {
-    LOG(INFO) << "Client received skipData; "
-              << newOffset - recvOffsets_[streamId]
-              << " bytes skipped on stream=" << streamId;
   }
 
   void connect() {
@@ -165,10 +158,10 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
 
   ~ExampleClient() override = default;
 
- private:
-  void sendMessage(quic::StreamId id, folly::IOBufQueue& data) {
+private:
+  void sendMessage(quic::StreamId id, folly::IOBufQueue &data) {
     auto message = data.move();
-    auto res = quicClient_->writeChain(id, message->clone(), true, false);
+    auto res = quicClient_->writeChain(id, message->clone(), true);
     if (res.hasError()) {
       LOG(ERROR) << "ExampleClient writeChain error=" << uint32_t(res.error());
     } else {
@@ -187,8 +180,8 @@ class ExampleClient : public quic::QuicSocket::ConnectionCallback,
   std::shared_ptr<quic::QuicClientTransport> quicClient_;
   std::map<quic::StreamId, folly::IOBufQueue> pendingOutput_;
   std::map<quic::StreamId, uint64_t> recvOffsets_;
-  folly::EventBase* evb_{nullptr};
+  folly::EventBase *evb_{nullptr};
 };
 
-}  // namespace traffic_gen
-}  // namespace quic
+} // namespace traffic_gen
+} // namespace quic

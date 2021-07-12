@@ -12,15 +12,13 @@
 
 #include <quic/congestion_control/Bbr.h>
 
+#include "CongestionControlEnv.h"
+#include "CongestionControlEnvConfig.h"
 #include "Utils.h"
 
 namespace quic {
 
 using namespace std::chrono_literals;
-
-// Bandwidth estimates must be computed over a window spanning at least this
-// duration (to make these estimates more stable).
-constexpr std::chrono::microseconds kBandwidthWindowMinDuration{100'000us};
 
 /*
   Bandwidth estimator based on ACK packets.
@@ -35,7 +33,7 @@ constexpr std::chrono::microseconds kBandwidthWindowMinDuration{100'000us};
 */
 class RLBandwidthSampler : public BbrCongestionController::BandwidthSampler {
 public:
-  explicit RLBandwidthSampler(QuicConnectionStateBase &conn);
+  explicit RLBandwidthSampler(QuicConnectionStateBase &conn, const CongestionControlEnv::Config &cfg);
 
   Bandwidth getBandwidth() const noexcept override;
 
@@ -66,7 +64,7 @@ private:
   // several ACK events may be processed at (almost) the same time due to
   // network hiccups. Without a minimum duration, this could lead to an
   // unexpectedly high bandwidth estimate.
-  std::chrono::microseconds minWindowDuration_{kBandwidthWindowMinDuration};
+  std::chrono::microseconds minWindowDuration_;
 
   // The minimum window duration above is translated into a minimum interval
   // between events stored in the rolling window (events too close to each other

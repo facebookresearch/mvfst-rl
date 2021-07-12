@@ -1,5 +1,8 @@
 defaults:
     - base_config
+    - jobs@train_jobs: random_traces_0_5
+    - jobs@eval_jobs: fixed_0_5
+    - jobs@env_configs: fixed_0_5
     - override hydra/launcher: _submitit_slurm
 
 # batch_size: 8  # default=8

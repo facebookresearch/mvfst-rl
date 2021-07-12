@@ -64,6 +64,11 @@ private:
   uint64_t cwndBytes_;
 
   std::unique_ptr<CongestionControlEnv> env_;
+  const CongestionControlEnv::Config &cfg_;
+
+  // RNG used to add noise to observations.
+  std::mt19937 rng_;
+  std::normal_distribution<double> normal_{0., 1.};
 
   // Copa-style RTT filters to get more accurate min and standing RTT values.
   WindowedFilter<std::chrono::microseconds,
@@ -86,6 +91,8 @@ private:
   uint32_t prevTotalPTOCount_{0};
   uint32_t prevRtxCount_{0};
   uint32_t prevTimeoutBasedRtxCount_{0};
+  float avgAckDelayMs_{0};
+  float avgRTTWithDelayMs_{0};
 };
 
 } // namespace quic

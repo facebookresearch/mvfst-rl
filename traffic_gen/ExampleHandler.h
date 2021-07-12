@@ -99,7 +99,7 @@ class ExampleHandler : public quic::QuicSocket::ConnectionCallback,
     auto responseData = respBuf_->clone();
     bool eof = false;
     auto res =
-        sock->writeChain(id, std::move(responseData), eof, false, nullptr);
+        sock->writeChain(id, std::move(responseData), eof, nullptr);
     if (res.hasError()) {
       LOG(ERROR) << "write error=" << toString(res.error());
     } else {

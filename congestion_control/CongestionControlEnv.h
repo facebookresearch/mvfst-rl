@@ -96,6 +96,7 @@ protected:
                                uint32_t actionIdx) const;
 
   const Config &cfg_;
+  const QuicConnectionStateBase &conn_;
 
 private:
   class ObservationTimeout : public folly::HHWheelTimer::Callback {
@@ -137,7 +138,6 @@ private:
   stateSummary(const quic::utils::vector<NetworkState> &states);
 
   Callback *cob_{nullptr};
-  const QuicConnectionStateBase &conn_;
   folly::EventBase *evb_{nullptr};
   ObservationTimeout observationTimeout_;
 
@@ -148,6 +148,10 @@ private:
   // Keep track of running statistics on rewards.
   uint64_t rewardCount_;
   float rewardSum_;
+
+  // This field is updated every time the reward is computed. It tracks the current
+  // estimate of the RTT (without ACK delay), possibly with noise when rttNoiseStd > 0.
+  mutable float avgNoisyRTTNoDelay_{0.0};
 
   // Intermediate tensor to compute state summary
   torch::Tensor summaryTensor_{torch::empty({0}, torch::kFloat32)};
