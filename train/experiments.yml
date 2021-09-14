@@ -3,7 +3,7 @@
 # Modified a bit for our purposes.
 
 meta:
-  branch: master
+  branch: main
   base_dir: {src_dir}
   test_path: {src_dir}/_build/deps/pantheon/src/experiments/test.py
   data_base_dir: {src_dir}/data
