@@ -24,13 +24,18 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Ensure that the `train` module can be found.
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from train.constants import MAX_CWND
+
 
 logger = logging.getLogger(__name__)
 
 TPERF_SETTINGS = [
     "cc_env_mode",
     "cc_env_model_file",
-    "cc_env_job_id",
+    "cc_env_job_count",
 ]
 
 # These arguments are to be read from the experiment training configuration, to be
@@ -44,16 +49,23 @@ TPERF_FLAGS = [
     "cc_env_norm_ms",
     "cc_env_norm_bytes",
     "cc_env_actions",
-    "cc_env_reward_log_ratio",
+    "cc_env_reward_formula",
     "cc_env_reward_throughput_factor",
     "cc_env_reward_throughput_log_offset",
     "cc_env_reward_delay_factor",
+    "cc_env_reward_delay_offset",
     "cc_env_reward_delay_log_offset",
     "cc_env_reward_packet_loss_factor",
     "cc_env_reward_packet_loss_log_offset",
+    "cc_env_reward_min_throughput_ratio",
+    "cc_env_reward_max_throughput_ratio",
+    "cc_env_reward_n_packets_offset",
+    "cc_env_reward_uplink_queue_max_fill_ratio",
     "cc_env_reward_max_delay",
-    "cc_env_fixed_cwnd",
     "cc_env_min_rtt_window_length_us",
+    "cc_env_ack_delay_avg_coeff",
+    "cc_env_bandwidth_min_window_duration_ms",
+    "cc_env_obs_scaling",
 ]
 
 
@@ -153,7 +165,7 @@ def main() -> int:
 
     # Check that the config is valid.
     assert not flags[
-        "use_job_id_in_actor"
+        "use_task_obs_in_actor"
     ], "providing the job ID is not currently supported"
 
     # Trace model if needed.
@@ -169,8 +181,9 @@ def main() -> int:
     # Post-process / add arguments.
     tperf_args.update(
         {
+            "max_cwnd_mss": MAX_CWND,
             "congestion": "rl",
-            "cc_env_job_id": -1,
+            "cc_env_job_count": -1,
             "cc_env_mode": "local",
             "cc_env_model_file": str(traced_path),
             "cc_env_actions": get_cc_env_actions(flags["cc_env_actions"]),
@@ -180,6 +193,21 @@ def main() -> int:
     # Output tperf args.
     tperf_cmd = " ".join(f"-{k}='{to_str(v)}'" for k, v in tperf_args.items())
     logger.info("tperf command line arguments:\n%s", tperf_cmd)
+
+    # Also output arguments as a list suitable for input to a Hydra script taking
+    # arguments on the command line (with a few of them removed).
+    args = ",".join(
+        f'"-{k}={to_str(v)}"'
+        for k, v in tperf_args.items()
+        if k
+        not in [
+            "congestion",
+            "cc_env_job_count",
+            "cc_env_mode",
+            "cc_env_model_file",
+        ]
+    )
+    logger.info("As a Hydra list:\n%s", "'[" + args + "]'")
 
     return 0
 

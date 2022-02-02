@@ -24,14 +24,21 @@ public:
   enum class Field : uint16_t {
     // RTT related
     RTT_MIN = 0,
+    /*
     RTT_STANDING,
     LRTT,
+    LDRTT,
     SRTT,
     RTT_VAR,
+    */
+    NOISY_RTT_WITH_DELAY,
     DELAY,
+    ACK_DELAY,
 
     // Bytes related
     CWND,
+    THROUGHPUT_FROM_CWND,
+    /*
     IN_FLIGHT,
     WRITABLE,
     SENT,
@@ -46,11 +53,15 @@ public:
 
     // AckEvent
     ACKED,
+    */
     THROUGHPUT,
+    // THROUGHPUT_LOG_RATIO,
 
     // LossEvent
-    LOST,
+    // LOST,
+    /*
     PERSISTENT_CONGESTION,
+    */
 
     // Total number of fields
     NUM_FIELDS

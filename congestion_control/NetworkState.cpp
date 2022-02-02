@@ -70,6 +70,7 @@ std::string NetworkState::fieldToString(const Field field) {
   switch (field) {
   case Field::RTT_MIN:
     return "rtt_min";
+  /*
   case Field::RTT_STANDING:
     return "rtt_standing";
   case Field::LRTT:
@@ -78,10 +79,17 @@ std::string NetworkState::fieldToString(const Field field) {
     return "srtt";
   case Field::RTT_VAR:
     return "rtt_var";
+    */
   case Field::DELAY:
     return "delay";
+  case Field::ACK_DELAY:
+    return "ack_delay";
+
   case Field::CWND:
     return "cwnd";
+  case Field::THROUGHPUT_FROM_CWND:
+    return "throughput_from_cwnd";
+    /*
   case Field::IN_FLIGHT:
     return "in_flight";
   case Field::WRITABLE:
@@ -102,12 +110,15 @@ std::string NetworkState::fieldToString(const Field field) {
     return "timeout_based_rtx_count";
   case Field::ACKED:
     return "acked";
+    */
   case Field::THROUGHPUT:
     return "throughput";
+    /*
   case Field::LOST:
     return "lost";
   case Field::PERSISTENT_CONGESTION:
     return "persistent_congestion";
+    */
   case Field::NUM_FIELDS:
     return "num_fields";
   default:

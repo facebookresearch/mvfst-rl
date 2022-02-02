@@ -5,26 +5,36 @@
 # LICENSE file in the root directory of this source tree.
 #
 import argparse
+import hashlib
 import inspect
-import itertools
 import logging
 import os
+import pickle
 import shutil
 import signal
-import socket
 import string
 import sys
 import time
-import yaml
 
+from collections import namedtuple
 from dataclasses import field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from pathlib import Path
+from typing import Dict, Generator, List, Optional, Tuple
 
+import numpy as np
 import psutil
+from omegaconf import OmegaConf
 
-from train.constants import SRC_DIR, PANTHEON_ROOT, EXPERIMENTS_CFG
+from train import state
+
+
+# Used to store information about jobs.
+JobInfo = namedtuple("JobInfo", ["job_id", "task_obs"])
+
+# Used to communicate between processes.
+Message = namedtuple("Message", ["type", "data"], defaults=(None,))
 
 
 class _StrEnum(str, Enum):
@@ -114,6 +124,78 @@ def add_to_path(path):
             os.environ["PYTHONPATH"] += os.pathsep + path
 
 
+def balanced_randints(rng, n: int) -> Generator[int, None, None]:
+    """
+    Generate random numbers from 0 to n-1 in a balanced way.
+
+    More precisely, this consists in the following steps:
+        1. Shuffle a sequence of numbers from 0 to n-1
+        2. Yield elements in this shuffled sequence
+        3. Repeat from step 1
+    """
+    indices = list(range(n))
+    while True:
+        rng.shuffle(indices)
+        for i in indices:
+            yield i
+
+
+def ceil_int_div(n: int, d: int) -> int:
+    """Return ceil(n / d)"""
+    # See https://stackoverflow.com/questions/14822184/is-there-a-ceiling-equivalent-of-operator-in-python
+    return -(n // -d)
+
+
+def clear_ramdisk(flags) -> None:
+    """
+    Clear data from ramdisk.
+
+    This clears both:
+        * Data from the current job
+        * Data from other jobs whose owner's process has died
+    """
+    base_dir, job_dir = get_ramdisk_paths(flags)
+    if job_dir is None:
+        return
+
+    delete_dir(job_dir)
+
+    if not base_dir.is_dir():
+        return
+
+    try:
+        for other in base_dir.iterdir():
+            if not other.is_dir():
+                logging.warning("Found a non-directory item in RAM disk folder")
+                continue
+            pid_path = other / "owner_pid"
+            if not pid_path.is_file():
+                # Note: this might happen in case of concurrent processes.
+                logging.warning("Found a directory in RAM disk with no PID file")
+                continue
+            try:
+                with pid_path.open() as f:
+                    pid = int(f.read())
+            except Exception:
+                logging.warning(f"Failed to read PID from: {pid_path}")
+                continue
+            try:
+                psutil.Process(pid)
+            except psutil.NoSuchProcess:
+                logging.info(f"Deleting old RAM disk folder from PID {pid}: {other}")
+                delete_dir(other)
+
+    except Exception:
+        logging.exception(f"Failed to clean up base RAM disk folder: {base_dir}")
+
+
+def default_empty_dict():
+    """
+    Helper function to declare a dataclass field whose default value is an empty dict.
+    """
+    return field(default_factory=dict)
+
+
 def default_empty_list():
     """
     Helper function to declare a dataclass field whose default value is an empty list.
@@ -127,6 +209,57 @@ def default_list(lst):
     """
     # We make a copy of `lst` to be sure it is not accidentally shared.
     return field(default_factory=lambda: list(lst))
+
+
+def generate_scaled_trace(
+    base_path: Path,
+    scaled_path: Path,
+    scaling_factor: float,
+    min_scaled_trace_size: int,
+) -> None:
+    """
+    Generate a scaled trace from a base trace, given a scaling factor.
+
+    :param base_path: Path to the input base trace.
+    :param scaled_path: Path where the output scaled trace should be saved.
+    :param scaling_factor: Scaling factor for trace timestamps. A value > 1 means that
+        the trace is sped-up by this factor (a value <1 means slowing down the trace).
+    :param min_scaled_trace_size: Minimum size (in number of rows) of the output scaled
+        trace file. If the input trace has fewer rows, we duplicate it until this minimum
+        number of rows is reached. This makes the scaled trace more accurate, as
+        otherwise the rounding to the nearest millisecond may cause issues. For instance
+        if the input trace only contains "1" and we want to speed it up by 30% (i.e.,
+        the scaling factor is 1.3), we cannot just have a single integer number anymore.
+    """
+    start_time = time.perf_counter()
+
+    # Read the base trace.
+    with base_path.open() as f:
+        base_trace = f.readlines()
+    data = np.array([int(x) for x in base_trace], dtype=np.float64)
+
+    # Duplicate the data (if needed) until we reach the desired number of rows.
+    n_dup = ceil_int_div(min_scaled_trace_size, len(data))
+    if n_dup > 1:
+        # `offsets` is used to shift the timestamps of the duplicated copies.
+        # It looks like this for an input trace with three rows ending at 100ms:
+        #   [0, 0, 0, 100, 100, 100, 200, 200, 200, 300, 300, 300, ...]
+        offsets = np.repeat(np.arange(n_dup) * data[-1], len(data))
+        # Copy the data multiple times, shifting the copies by `offsets`.
+        data = np.tile(data, n_dup) + offsets
+
+    # Scale timestamps based on the scaling factor.
+    assert scaling_factor > 0
+    data /= scaling_factor
+
+    # Save the resulting trace.
+    scaled_path.parent.mkdir(parents=True, exist_ok=True)
+    with scaled_path.open("w") as f:
+        # We round floats to nearest integer.
+        f.write("\n".join([f"{t:.0f}" for t in data]))
+
+    duration = time.perf_counter() - start_time
+    logging.info(f"Generated scaled trace in {duration:.2f}s: {scaled_path}")
 
 
 def get_actions(num_actions):
@@ -152,60 +285,108 @@ def get_actions(num_actions):
     return ACTIONS[num_actions]
 
 
-def get_cpus_per_task(mode, num_actors, test_job_ids, test_after_train, max_jobs):
-    """Return number of CPUs to reserve given the current settings"""
-    from train import pantheon_env  # lazy import to avoid circular dependencies
-
-    # Reserve 2 CPUs per Pantheon "thread" (at least 4 total). During training,
-    # the number of threads is equal to the number of actors, while during
-    # testing it is equal to the number of jobs.
-    n_cpus_min = 4
-    n_threads_train = n_threads_test = 0
-
-    assert mode in ["train", "test"]
-    if mode == "train":
-        n_threads_train = num_actors
-    if mode == "test" or test_after_train:
-        jobs = pantheon_env.get_jobs_to_perform(test_job_ids, max_jobs)
-        n_threads_test = len(jobs)
-
-    return max(n_cpus_min, n_threads_train * 2, n_threads_test * 2)
-
-
-def get_jobs(flags, mode=None):
+def get_jobs(flags, mode=None, actor_id=None):
     from train import pantheon_env  # lazy import to avoid circular dependencies
 
     mode = flags.mode if mode is None else mode
     if mode == "train":
-        job_ids = flags.train_job_ids
+        if actor_id is None or actor_id < flags.num_actors_train:
+            job_ids = flags.train_job_ids
+        else:
+            job_ids = flags.eval_job_ids
     elif mode == "test":
         job_ids = flags.test_job_ids
     else:
         raise ValueError(mode)
 
-    return pantheon_env.get_jobs_to_perform(job_ids, flags.max_jobs)
+    return pantheon_env.get_jobs_to_perform(
+        flags=flags, job_ids=job_ids, actor_id=actor_id
+    )
 
 
-def get_n_jobs(flags, mode=None):
-    return len(get_jobs(flags, mode=mode))
+def get_n_jobs(flags, mode=None, actor_id=None):
+    return len(get_jobs(flags, mode=mode, actor_id=actor_id))
 
 
 def get_observation_length(history_size, num_actions):
     # The observation contains:
-    # - state summary stats (5 * 20) (5 because sum / mean / std / min /max)
+    # - state summary stats (5 * num_fields) (5 because sum / mean / std / min /max)
     # - history_size * (one-hot actions + cwnd)
-    # - job ID
-    return 100 + history_size * (num_actions + 1) + 1
+    # This formula must be kept in synch with the one used in
+    #   CongestionControlEnv::Observation::toTensor()
+    return 5 * state.Field.NUM_FIELDS.value + history_size * (num_actions + 1)
 
 
-def get_slurm_constraint(partition: str, gpus_per_node: int) -> Optional[str]:
-    """Return the constraint to be used by the `submitit_slurm` launcher"""
-    if partition in ["priority", "learnfair"] and gpus_per_node <= 2:
-        # If we are on the right environment, use constraint "gpu2".
-        host = socket.gethostname()
-        if host.startswith("devfair") and len(host) == 11:  # H2?
-            return "gpu2"
-    return None
+def get_ramdisk(flags, create: bool = False) -> Optional[Path]:
+    """Return path to RAM disk for this job, if any"""
+    base_dir, job_dir = get_ramdisk_paths(flags)
+
+    if job_dir is None:
+        return None
+
+    if job_dir.is_dir():
+        return job_dir
+
+    if not create:
+        return None
+
+    # Try to create the RAM disk folder.
+    try:
+        job_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        logging.warning(f"Unable to created RAM disk folder: {job_dir}")
+        return None
+
+    # Store the current PID: this way, another process may know that it is
+    # ok to delete this RAM disk if this process has died.
+    with (job_dir / "owner_pid").open("w") as f:
+        f.write(f"{os.getpid()}")
+
+
+def get_ramdisk_paths(flags) -> Tuple[Optional[Path], Optional[Path]]:
+    """
+    Return paths for RAM disk folders.
+
+    The return value is a pair containing two paths:
+        - The base path for all mvfst-rl RAM disk folders
+        - The RAM disk folder associated to the current job
+
+    If there is no RAM disk available then both paths are `None`.
+    """
+    shm = Path("/dev") / "shm"
+    if not shm.is_dir():
+        return None, None
+
+    base_dir = shm / "mvfst-rl.tmp"
+    # We use the hash of the logdir as folder name.
+    logdir_hash = hashlib.sha256(str(flags.base_logdir).encode("ascii")).hexdigest()
+
+    return base_dir, base_dir / logdir_hash
+
+
+def get_slurm_temporary_dir() -> Optional[Path]:
+    slurm_job_id = os.getenv("SLURM_JOB_ID")
+    if slurm_job_id is None:
+        return None
+    job_dir = Path("/scratch") / "slurm_tmpdir" / slurm_job_id
+    return job_dir if job_dir.is_dir() else None
+
+
+def load_traced_model_flags(model: Path) -> Dict[str, any]:
+    """Load flags associated to a given traced model"""
+    flags_pkl = model.with_suffix(".flags.pkl")
+    assert flags_pkl.is_file(), f"missing flags for model {model}"
+    with flags_pkl.open("rb") as f:
+        flags_dict = pickle.load(f)
+    return OmegaConf.create(flags_dict)
+
+
+def make_one_hot(i: int, n: int) -> List[int]:
+    """Return a one-hot list of size `n` with a one at position `i`"""
+    assert n > 1, "you probably do not want a one-hot of size <= 1"
+    one_hot = [0] * n
+    one_hot[i] = 1
+    return one_hot
 
 
 def str2bool(v):
@@ -227,21 +408,13 @@ def safe_format(format_string, key_dict):
     return string.Formatter().vformat(format_string, (), SafeDict(key_dict))
 
 
-def parse_experiments():
-    with open(EXPERIMENTS_CFG) as cfg:
-        return yaml.full_load(
-            safe_format(
-                cfg.read(), {"src_dir": SRC_DIR, "pantheon_root": PANTHEON_ROOT}
-            )
-        )
-
-
 def delete_dir(dir_path, max_tries=1, sleep_time=1):
     """Delete a directory (with potential retry mechanism)"""
-    if not os.path.exists(dir_path):
+    if not dir_path.exists():
         return
 
     for i in range(max_tries):
+        start_time = time.perf_counter()
         try:
             shutil.rmtree(dir_path)
         except Exception:
@@ -252,27 +425,9 @@ def delete_dir(dir_path, max_tries=1, sleep_time=1):
                 logging.info("Failed to delete dir (will try again): %s", dir_path)
                 time.sleep(sleep_time)
         else:
-            logging.info("Deleted dir: %s", dir_path)
+            duration = time.perf_counter() - start_time
+            logging.info("Deleted dir (in %.3fs): %s", duration, dir_path)
             break
-
-
-expt_cfg = parse_experiments()
-meta = expt_cfg["meta"]
-
-
-def expand_matrix(matrix_cfg):
-    input_list = []
-    for variable, value_list in matrix_cfg.items():
-        input_list.append([{variable: value} for value in value_list])
-
-    ret = []
-    for element in itertools.product(*input_list):
-        tmp = {}
-        for kv in element:
-            tmp.update(kv)
-        ret.append(tmp)
-
-    return ret
 
 
 # Mostly copied from https://psutil.readthedocs.io/en/latest/#kill-process-tree

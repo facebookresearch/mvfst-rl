@@ -16,22 +16,16 @@
 
 import copy
 import logging
-import torch
-import torch.multiprocessing as mp
 import os
 import shutil
-import warnings
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
 
 import hydra
+import torch
+import torch.multiprocessing as mp
 
-from hydra.core.config_store import ConfigStore
-from omegaconf import OmegaConf
-
-from train import learner, pantheon_env, common, utils, models
+from train import config, learner, pantheon_env, utils
 from train.constants import CONF_ROOT, THIRD_PARTY_ROOT
 
 utils.add_to_path(THIRD_PARTY_ROOT)
@@ -43,40 +37,8 @@ logging.basicConfig(level=logging.INFO)
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-
-# NB: using `Dict[str, Any]` as base class for the various configs is required to make
-# it possible to merge them through `OmegaConf.merge()` later. In the future it may be
-# better to use nested configs instead, as the current approach disables some of the
-# type-safety mechanisms from Hydra.
-@dataclass
-class ConfigTrain(Dict[str, Any]):
-    # Base directory for logging (will be set at runtime).
-    base_logdir: Optional[str] = None
-    # Whether to also test the model after training it.
-    test_after_train: bool = True
-
-
-# Register resolvers.
-OmegaConf.register_new_resolver("get_cpus_per_task", utils.get_cpus_per_task)
-OmegaConf.register_new_resolver("get_slurm_constraint", utils.get_slurm_constraint)
-
-# Register the config.
-cs = ConfigStore.instance()
-
-with warnings.catch_warnings():
-    # Temporary workaround to hide a deprecation warning with OmegaConf 2.1.0.rc1.
-    # See https://github.com/omry/omegaconf/issues/721
-    warnings.simplefilter("ignore")
-    cs.store(
-        name="base_config",
-        # We merge all configs from multiple sources.
-        node=OmegaConf.merge(
-            ConfigTrain,
-            common.ConfigCommon,
-            learner.ConfigLearner,
-            pantheon_env.ConfigEnv,
-        ),
-    )
+# Initialize config on import.
+config.init_config()
 
 
 def init_logdirs(flags):
@@ -95,6 +57,10 @@ def init_logdirs(flags):
         assert os.path.exists(
             flags.checkpoint
         ), "Checkpoint {} missing in {} mode".format(flags.checkpoint, flags.mode)
+
+    # Clear old RAM disk data (if any), and create new RAM disk folder.
+    utils.clear_ramdisk(flags)
+    utils.get_ramdisk(flags, create=True)
 
 
 def make_gossip_buffer(flags, num_agents, mng, device):
@@ -167,15 +133,18 @@ def train(flags):
         )
 
     base_logdir = flags.base_logdir
+    all_logdirs = []
     learner_proc = []
     pantheon_proc = []
     stop_event = []
+    from_learner_queue = []
     for rank in range(num_agents):
         flags.base_logdir = (
             os.path.join(base_logdir, "gala_{}".format(rank))
             if num_agents > 1
             else base_logdir
         )
+        all_logdirs.append(flags.base_logdir)
         init_logdirs(flags)
 
         # Unix domain socket path for RL server address, one per GALA agent.
@@ -197,7 +166,10 @@ def train(flags):
             )
         )
 
+        job_info_queue = mp.Queue()
+
         stop_event.append(mp.Event())
+        from_learner_queue.append(mp.Queue())
         learner_proc.append(
             mp.Process(
                 target=learner.main,
@@ -207,12 +179,22 @@ def train(flags):
                     barrier=barrier,
                     gossip_buffer=shared_gossip_buffer,
                     stop_event=stop_event[-1],
+                    from_learner_queue=from_learner_queue[-1],
+                    job_info_queue=job_info_queue,
                 ),
                 daemon=False,
             )
         )
         pantheon_proc.append(
-            mp.Process(target=pantheon_env.main, args=(flags,), daemon=False)
+            mp.Process(
+                target=pantheon_env.main,
+                kwargs=dict(
+                    flags=flags,
+                    job_info_queue=job_info_queue,
+                    from_learner_queue=from_learner_queue[-1],
+                ),
+                daemon=False,
+            )
         )
         learner_proc[rank].start()
         pantheon_proc[rank].start()
@@ -226,48 +208,81 @@ def train(flags):
     # The motivation for this somewhat convoluted logic is that if we don't do #2 before
     # stopping the RPC server (in #3), then the Pantheon process will crash when the RPC
     # server is stopped, triggering meaningless error messages in the logs.
-    for rank in range(num_agents):
-        stop_event[rank].wait()
-        logging.info(
-            f"Stop event #{rank} set, will kill corresponding env (pid="
-            f"{pantheon_proc[rank].pid})"
-        )
-        utils.kill_proc_tree(pantheon_proc[rank].pid)
-        stop_event[rank].clear()
-        learner_proc[rank].join()
+    try:
+        for rank in range(num_agents):
+            stop_event[rank].wait()
+            logging.info(
+                f"Stop event #{rank} set, will kill corresponding env (pid="
+                f"{pantheon_proc[rank].pid})"
+            )
+            utils.kill_proc_tree(pantheon_proc[rank].pid)
+            stop_event[rank].clear()
+            learner_proc[rank].join()
 
-    logging.info("Done training.")
+        logging.info("Done training.")
+
+    finally:
+        # Clear all RAM disk data.
+        for logdir in all_logdirs:
+            flags.base_logdir = logdir
+            utils.clear_ramdisk(flags)
 
 
 def test(flags):
     flags.mode = "test"
     init_logdirs(flags)
+    try:
 
-    if "mvfst_rl" in pantheon_env.get_test_schemes(flags) and not os.path.exists(
-        flags.traced_model
-    ):
-        logging.info("Missing traced model, tracing first")
-        trace(copy.deepcopy(flags))
+        if "mvfst_rl" in pantheon_env.get_test_schemes(flags):
+            if os.path.exists(flags.traced_model):
+                model_flags = utils.load_traced_model_flags(Path(flags.traced_model))
+                if (
+                    model_flags.get("stochastic_evaluation", False)
+                    == flags.stochastic_evaluation
+                ):
+                    # The model has already been traced with the desired flags.
+                    must_trace = False
+                else:
+                    logging.info(
+                        "The previously traced model had a different `stochastic_evaluation` flag "
+                        "=> re-tracing it"
+                    )
+                    must_trace = True
+            else:
+                logging.info("Missing traced model, tracing first")
+                must_trace = True
+            if must_trace:
+                trace(copy.deepcopy(flags))
 
-    flags.cc_env_mode = "local"
+        flags.cc_env_mode = "local"
 
-    logging.info("Starting local test, logdir={}".format(flags.logdir))
-    pantheon_proc = mp.Process(target=pantheon_env.main, args=(flags,), daemon=False)
-    pantheon_proc.start()
-    pantheon_proc.join()
-    logging.info("Done local test")
+        logging.info("Starting local test, logdir={}".format(flags.logdir))
+        job_info_queue = None
+        pantheon_proc = mp.Process(
+            target=pantheon_env.main, args=(flags, job_info_queue), daemon=False
+        )
+        pantheon_proc.start()
+        pantheon_proc.join()
+        logging.info("Done local test")
+
+    finally:
+        utils.clear_ramdisk(flags)
 
 
 def trace(flags):
     flags.mode = "trace"
     init_logdirs(flags)
 
-    logging.info("Tracing model from checkpoint {}".format(flags.checkpoint))
-    learner_proc = mp.Process(target=learner.main, args=(flags,), daemon=False)
-    learner_proc.start()
-    learner_proc.join()
-    assert learner_proc.exitcode == 0, "tracing failed"
-    logging.info("Done tracing to {}".format(flags.traced_model))
+    try:
+        logging.info("Tracing model from checkpoint {}".format(flags.checkpoint))
+        learner_proc = mp.Process(target=learner.main, args=(flags,), daemon=False)
+        learner_proc.start()
+        learner_proc.join()
+        assert learner_proc.exitcode == 0, "tracing failed"
+        logging.info("Done tracing to {}".format(flags.traced_model))
+
+    finally:
+        utils.clear_ramdisk(flags)
 
 
 def init(flags):
@@ -298,6 +313,15 @@ def init(flags):
     else:
         # Use default list of actions.
         flags.cc_env_actions = utils.get_actions(flags.num_actions)
+
+    # Set the job IDs (independently for training and evaluation jobs).
+    for jobs_type in ["train_jobs", "eval_jobs"]:
+        all_job_ids = set()
+        for idx, job in enumerate(flags[jobs_type].jobs.values()):
+            if job.job_id is None:
+                job.job_id = idx
+            assert job.job_id not in all_job_ids, "duplicated job ID"
+            all_job_ids.add(job.job_id)
 
     # Use "spawn" multi-processing mode as the default "fork" is not PyTorch-friendly.
     mp_start_method = mp.get_start_method(allow_none=True)

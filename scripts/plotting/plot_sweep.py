@@ -35,7 +35,7 @@ import warnings
 from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -51,7 +51,7 @@ hv.notebook_extension(width=90)  # For showing wide plots
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 # -
 # Config settings to ignore, when identifying which settings were varied across several experiments.
-IGNORE_IN_DIFF = {'base_logdir', 'checkpoint', 'logdir', 'traced_model'}
+IGNORE_IN_DIFF = {'analyze_path', 'base_logdir', 'checkpoint', 'logdir', 'test_path', 'traced_model', 'traces_dir'}
 # Maximum number of parallel experiment loaders.
 MAX_XP_LOADERS = 10
 # Maximum number of parallel run loaders within each experiment.
@@ -60,8 +60,20 @@ MAX_RUN_LOADERS = 10
 ROLLING_WINDOW = 1000
 # Shorter names to make output more readable
 SHORT_NAMES = {
+    "cc_env_ack_delay_avg_coeff": "avg_coeff",
+    "cc_env_bandwidth_min_window_duration_ms": "bwdur",
+    "cc_env_min_rtt_window_length_us": "min_rtt_len",
+    "cc_env_norm_bytes": "norm_bytes",
+    "cc_env_norm_ms": "norm_ms",
+    "cc_env_reward_delay_factor": "df",
     "cc_env_reward_delay_log_offset": "dlo",
+    "cc_env_reward_delay_offset": "do",
+    "cc_env_reward_formula": "reward",
+    "cc_env_reward_max_throughput_ratio": "r'",
+    "cc_env_reward_min_throughput_ratio": "r",
+    "cc_env_reward_throughput_factor": "tf",
     "cc_env_reward_throughput_log_offset": "tlo",
+    "discounting": "gamma",
     "end_of_episode_bootstrap": "boot",
     "learning_rate": "lr",
     "mean_avg_reward": "reward",
@@ -72,7 +84,11 @@ SHORT_NAMES = {
     "mean_throughput_mean": "th",
     "reward_normalization": "rn",
     "reward_normalization_coeff": "rnc",
+    "reward_normalization_stats_per_job": "rnj",
+    "task_obs_embedding_activations": "embed_act",
     "throughput_over_delay": "th/dl",
+    "use_job_id_in_actor": "ja",
+    "use_job_id_in_critic": "jc",
 }
 LONG_NAMES = {v: k for k, v in SHORT_NAMES.items()}  # inverse mapping
 
@@ -91,10 +107,29 @@ def load_config(path: str) -> typing.Dict:
 RunLog = typing.Dict[str, pd.DataFrame]
 
 
-def load_logs(path_and_config: Tuple[Path, Any], split_by_job_id: bool = False) -> RunLog:
+def load_logs(path_and_config: Tuple[Path, Any], split_by_job_id: bool = False, actors: str = "all") -> RunLog:
     """Loads run logs as pandas.DataFrame."""
     path, config = path_and_config
     df = pd.read_csv(f"{path}/logs.tsv", sep="\t")
+
+    # Check that we have data from all actors and that it is sufficiently balanced.
+    num_actors = config["flags"]["num_actors"]
+    counts = df["actor_id"].groupby(d.actor_id).count()
+    actor_ids = set(counts.index)
+    missing_actors = [i for i in range(num_actors) if i not in actor_ids]
+    if missing_actors:
+        print(f"WARNING: no data from actors: {sorted(missing_actors)}")
+    median_count = counts.median()
+    not_enough = counts[counts < median_count * 0.8]
+    if not not_enough.empty:
+        print(f"WARNING: some actors have fewer episodes than others:\n{not_enough}")
+    too_many = counts[counts > median_count * 1.2]
+    if not too_many.empty:
+        print(f"WARNING: some actors have more episodes than others:\n{too_many}")
+
+    if actors != "all":
+        df = df[df.job_type == actors]
+
     if split_by_job_id:
         all_job_ids = sorted(df.job_id.unique())
         dfs = [(job_id, df[df.job_id == job_id]) for job_id in all_job_ids]
@@ -108,7 +143,8 @@ def load_logs(path_and_config: Tuple[Path, Any], split_by_job_id: bool = False) 
         df["avg_reward"] = df["episode_return"] / df["episode_step"]
 
         # Compute mean/std stats at each learning step.
-        mean_fields = ["avg_reward", "episode_step", "episode_return", "loss", "cwnd_mean", "delay_mean", "throughput_mean"]
+        mean_fields = ["avg_reward", "episode_step", "episode_return", "reward_above_threshold", "loss", "cwnd_mean", "delay_mean", "throughput_mean"]
+        mean_fields = [f for f in mean_fields if f in df]  # backward compatibility when adding new fields
         mean_df = df[["step"] + mean_fields].groupby("step").mean()
         mean_df.rename(columns={k: f"mean_{k}" for k in mean_fields}, inplace=True)
         mean_df.reset_index(inplace=True)  # set `step` back as column instead of index
@@ -138,7 +174,7 @@ def load_configs(paths: Iterable, config_filter: Optional[Callable] = None) -> D
         except FileNotFoundError as exc:
             missing = Path(exc.filename).name
             if missing.startswith("train_tid"):
-                pass  # expected: these are deleted during experiments
+                continue  # expected: these are deleted during experiments
             else:
                 # If this code is reached, see if other files need handling.
                 assert False, (exc.args, exc.filename, exc.filename2)
@@ -172,22 +208,77 @@ def find_args_diff(configs: Dict) -> Set[str]:
               if a not in IGNORE_IN_DIFF and a not in fixed_args)
 
 
+def make_hashable(obj):
+    """Return a hashable version of `item`"""
+    # Is it already hashable?
+    try:
+        hash(obj)
+    except TypeError:
+        pass
+    else:
+        return obj
+    if isinstance(obj, dict):
+        return tuple((k, make_hashable(v)) for k, v in obj.items())
+    elif isinstance(obj, list):
+        return tuple(make_hashable(item) for item in obj)
+    else:
+        raise NotImplementedError(type(obj))
+
+
 def flags_to_set(flags: Dict) -> Set:
     """Turn a dictionary of settings into a set of unique (key, value) pairs"""
     # The tricky part is that some flags may be lists, that are not hashable.
     # We convert them to tuples here.
-    return {(k, tuple(v) if isinstance(v, list) else v)
-            for k, v in flags.items()}
+    return set((k, make_hashable(v)) for k, v in flags.items())
 
 
 RunPivot = str
 ExpID = str
 
+def get_auto_pivot(pivot_cfg, configs, experiment_id=None):
+    """
+    Auto-detect which parameters were varied among the input configs, and use them as labels.
+
+    :param pivot_cfg: Dictionary used to configure the auto pivot. Currently the only supported
+        key is "ignore", that must map to either a string or a list of strings indicating which
+        parameters should be ignored by the auto pivot.
+    :param configs: A dictionary mapping a path to the corresponding config settings.
+    :param experiment_id: An optional ID that will be displayed, if provided.
+    """
+    sweep_args = find_args_diff(configs)
+
+    # Filter out parameters we want to ignore.
+    assert all(k in ["ignore"] for k in pivot_cfg)  # validate dict keys (currently only "ignore" is supported)
+    to_ignore = pivot_cfg.get("ignore", set())
+    to_ignore = {to_ignore} if isinstance(to_ignore, str) else set(to_ignore)
+    sweep_args = sweep_args - to_ignore
+
+    if experiment_id is not None:
+        print(f"Found the following sweep parameters for experiment `{experiment_id}`: {sweep_args}.")
+
+    def auto_pivot(config):
+        return tuple(
+            f"{SHORT_NAMES.get(k, k)}={v}" for k, v in sorted(config["flags"].items()) if k in sweep_args
+        )
+
+    return auto_pivot
+
 
 def cluster_runs(
-    configs: Dict, xp_pivot: Callable, run_pivot: Optional[Callable] = None
+    configs: Dict, xp_pivot: Callable, run_pivot: Optional[Union[Callable, dict]] = None
 ) -> Dict[ExpID, Dict[RunPivot, List]]:
-    """Cluster runs by given experiment and pivot key."""
+    """
+    Cluster runs by given experiment and pivot key.
+
+    :param run_pivot: One of:
+        - `None` -> auto-detect parameters that were varied
+        - dict -> auto-detect parameters that were varied, but ignore those listed in
+            the key "ignore" of this dict (if it exists)
+        - callable -> called to obtain the run's key
+    """
+    if run_pivot is None:
+        run_pivot = {}
+
     # Group runs by experiment ID.
     xp_key = lambda path_config: xp_pivot(path_config[1])
     configs_by_id = groupby(sorted(configs.items(), key=xp_key), key=xp_key)
@@ -197,17 +288,8 @@ def cluster_runs(
     for experiment_id, path_configs in configs_by_id:
         path_configs = list(path_configs)
 
-        if run_pivot is None:
-            # Auto-detect which parameters were varied in the sweep, and use them as labels.
-            sweep_args = find_args_diff(dict(path_configs))
-            print(f"Found the following sweep parameters for experiment `{experiment_id}`: {sweep_args}.")
-
-            def auto_pivot(config):
-                return tuple(
-                    f"{SHORT_NAMES.get(k, k)}={v}" for k, v in sorted(config["flags"].items()) if k in sweep_args
-                )
-
-            run_pivot_for_exp = auto_pivot
+        if isinstance(run_pivot, dict):
+            run_pivot_for_exp = get_auto_pivot(run_pivot, dict(path_configs), experiment_id=experiment_id)
         else:
             run_pivot_for_exp = run_pivot
 
@@ -231,7 +313,7 @@ def print_tree(nconfigs):
 Metrics = typing.Dict[ExpID, typing.Dict[RunPivot, RunLog]]
 
 
-def get_all_logs(nconfigs, experiment_id, lock=threading.Lock(), split_by_job_id=False):  # noqa: B008
+def get_all_logs(nconfigs, experiment_id, lock=threading.Lock(), split_by_job_id=False, actors="all"):  # noqa: B008
     with lock:
         print(f"Collecting metrics for {experiment_id}")
     split = nconfigs[experiment_id]
@@ -239,7 +321,7 @@ def get_all_logs(nconfigs, experiment_id, lock=threading.Lock(), split_by_job_id
     xp_logs = defaultdict(lambda: defaultdict(dict))
     for split_key, runs in split.items():
         pool = ThreadPoolExecutor(min(MAX_RUN_LOADERS, len(runs)))
-        log_loader = functools.partial(load_logs, split_by_job_id=split_by_job_id)
+        log_loader = functools.partial(load_logs, split_by_job_id=split_by_job_id, actors=actors)
         metrics = pool.map(log_loader, runs)
         for metrics_per_job in metrics:
             for job_id, r, m in metrics_per_job:
@@ -277,18 +359,18 @@ def get_label(key):
         return "|".join(key)
 
 
-def load_metrics(nconfigs, split_by_job_id: bool = False) -> Metrics:
+def load_metrics(nconfigs, split_by_job_id: bool = False, actors="all") -> Metrics:
     """Retrieve metrics into a clustered format (given clustered runs)."""
     pool = ThreadPoolExecutor(min(MAX_XP_LOADERS, len(nconfigs)))
-    pget = functools.partial(get_all_logs, nconfigs, split_by_job_id=split_by_job_id)
+    pget = functools.partial(get_all_logs, nconfigs, split_by_job_id=split_by_job_id, actors=actors)
     all_xp_logs = pool.map(pget, list(nconfigs.keys()))
-    
+
     metrics = {}
     for experiment_id, xp_logs in all_xp_logs:
         if split_by_job_id:
             # Combine the job ID with `experiment_id` to obtain the final ID
             for job_id, logs in xp_logs.items():
-                new_id = f"job_id={job_id}"
+                new_id = f"job_id={job_id:02n}"
                 if experiment_id == "ALL":
                     pass
                 elif isinstance(experiment_id, str):
@@ -307,29 +389,31 @@ def load_metrics(nconfigs, split_by_job_id: bool = False) -> Metrics:
 def load_experiments(
     paths: typing.List[Path],
     config_filter: Optional[Callable] = None,
-    xp_pivot: Optional[Callable] = None,
+    xp_pivot: Optional[Union[Callable, dict]] = None,
     run_pivot: Optional[Callable] = None,
     split_by_job_id: bool = False,
+    actors="all",
 ) -> Metrics:
     """Retrieves and clusters experiment data.
 
     By default, it'll attempt to discover sweep parameters and cluster
     experiments around them.
+
+    :param actors: One of "all", "train", "eval". If "train" then only metrics from training
+        actors (whose data is used to update the model) are reported. If "eval" then only
+        metrics from evaluation actors (whose data is not used for training) are reported.
     """
-    configs = load_configs(paths, config_filter)
     if xp_pivot is None:
-        sweep_args = find_args_diff(configs)
-        print(f"Found the following sweep parameters: {sweep_args}.")
+        xp_pivot = {}
 
-        def auto_pivot(config):
-            return tuple(
-                f"{SHORT_NAMES.get(k, k)}={v}" for k, v in sorted(config["flags"].items()) if k in sweep_args
-            )
+    configs = load_configs(paths, config_filter)
 
-        xp_pivot = auto_pivot
+    if isinstance(xp_pivot, dict):
+        xp_pivot = get_auto_pivot(xp_pivot, configs)
+
     nc = cluster_runs(configs, xp_pivot, run_pivot)
     print_tree(nc)
-    return load_metrics(nc, split_by_job_id=split_by_job_id)
+    return load_metrics(nc, split_by_job_id=split_by_job_id, actors=actors)
 
 
 # -
@@ -714,7 +798,7 @@ run_pivot = None  # auto
 
 paths = get_paths(pattern)
 assert paths, f"no valid experiment data found for pattern '{pattern}'"
-data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=False)
+data = load_experiments(paths, xp_filter, xp_pivot, run_pivot, split_by_job_id=False, actors="eval")
 # -
 
 # ## Training curves

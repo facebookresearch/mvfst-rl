@@ -1,0 +1,19 @@
+defaults:
+    - base_jobs
+
+jobs:
+    #0
+    sampled_scenario:
+        delay: "${uniform_log_int: 15, 100, 40}"
+        rtt_noise_std: "${uniform_log: 0.001, 0.1, 0.03}"
+        uplink:
+            trace: >-
+               ${choice:
+               100.42mbps.trace,
+               77.72mbps.trace,
+               114.68mbps.trace
+               }
+            trace_scaling_factor: "${uniform_log: 0.5, 2, 1}"
+            loss: 0
+            queue_type: droptail
+            queue_size_packets: "${uniform_log_int: 50, 1000, 300}"

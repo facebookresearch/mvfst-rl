@@ -13,9 +13,10 @@ namespace quic {
 
 using namespace std::chrono;
 
-RLBandwidthSampler::RLBandwidthSampler(QuicConnectionStateBase &conn)
+RLBandwidthSampler::RLBandwidthSampler(QuicConnectionStateBase &conn, const CongestionControlEnv::Config &cfg)
     : conn_(conn), ackBytes_(kBandwidthWindowLength, 0),
       ackTimes_(kBandwidthWindowLength, Clock::now()),
+      minWindowDuration_(cfg.bandwidthMinWindowDuration),
       lastEntryInitialTime_(Clock::now()) {
   // Compute the min interval required to respect the min window duration.
   const uint64_t minWin = minWindowDuration_.count();
@@ -57,7 +58,7 @@ Bandwidth RLBandwidthSampler::getBandwidth() const noexcept {
     }
   }
 
-  VLOG(10) << __func__ << "Computing bandwidth based on " << ackBytes
+  VLOG(10) << __func__ << ": Computing bandwidth based on " << ackBytes
            << " acknowledged bytes over " << (windowDuration.count() / 1000)
            << " ms";
 

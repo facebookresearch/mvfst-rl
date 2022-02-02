@@ -1,11 +1,11 @@
 /*
-* Copyright (c) Facebook, Inc. and its affiliates.
-* All rights reserved.
-*
-* This source code is licensed under the license found in the
-* LICENSE file in the root directory of this source tree.
-*
-*/
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ */
 #pragma once
 
 #include <chrono>
@@ -27,6 +27,21 @@ struct CongestionControlEnvConfig {
     RANDOM,    // Simple env that takes random actions (for testing)
     FIXED,     // Simple env that attempts to reach a fixed cwnd target (for
                // testing)
+  };
+
+  // Reward formula (see pantheon_env.py for details).
+  enum class RewardFormula : uint8_t {
+    LINEAR = 0,
+    LOG_RATIO,
+    MIN_THROUGHPUT,
+    TARGET_CWND,
+    TARGET_CWND_SHAPED,
+    HIGHER_IS_BETTER,
+    ABOVE_CWND,
+    CWND_RANGE,
+    CWND_RANGE_SOFT,
+    CWND_TRADEOFF,
+    BELOW_TARGET_CWND,
   };
 
   // Type of aggregation to group state updates
@@ -57,8 +72,8 @@ struct CongestionControlEnvConfig {
   // connections to RL server.
   int64_t actorId{0};
 
-  // Index of the current job in the list of active jobs. -1 if undefined.
-  int64_t jobId{-1};
+  // Job counter during training. -1 if undefined.
+  int64_t jobCount{-1};
 
   Aggregation aggregation{Aggregation::TIME_WINDOW};
   std::chrono::milliseconds windowDuration{100}; // Time window duration
@@ -79,25 +94,48 @@ struct CongestionControlEnvConfig {
       {ActionOp::ADD, 10}, {ActionOp::MUL, 2},
   };
 
-  // Multipliers for reward components
-  bool rewardLogRatio{false};
+  // Parameters for reward components
+  RewardFormula rewardFormula{RewardFormula::LOG_RATIO};
+  float uplinkBandwidth{0.0};
+  uint32_t uplinkQueueSizeBytes{1}; // 1 by default to avoid division by zero
+  float baseRTT{1.0};               // 1 by default to avoid division by zero
+  float delayOffset{0.0};
   float throughputFactor{0.1};
   float throughputLogOffset{1.0};
   float delayFactor{0.01};
   float delayLogOffset{1.0};
   float packetLossFactor{0.0};
   float packetLossLogOffset{1.0};
+  float minThroughputRatio{0.9};
+  float maxThroughputRatio{1.0};
+  float nPacketsOffset{1.0};
+  float uplinkQueueMaxFillRatio{0.5};
 
   // Whether to use max delay within a window in reward (avg otherwise)
   bool maxDelayInReward{true};
 
+  // Moving average coefficient for ack delay-related computations.
+  float ackDelayAvgCoeff{0.1};
+
   // 'fixed' env mode only: the target cwnd value we want to reach
   uint32_t fixedCwnd{10};
 
+  // Path to file where some statistics are saved (if provided).
+  std::string statsFile{""};
+
   /// RLCongestionController settings
 
-  // Window duration used to compute the min RTT.
+  // Window duration used to compute the min RTT
   std::chrono::microseconds minRTTWindowLength{kMinRTTWindowLength};
+
+  // Noise settings.
+  float rttNoiseStd{0.0};
+
+  // Observation scaling factor
+  float obsScaling{1.0};
+
+  /// RLBandwidthSampler settings
+  std::chrono::microseconds bandwidthMinWindowDuration{100'000us};
 
   /// Helper functions
 
