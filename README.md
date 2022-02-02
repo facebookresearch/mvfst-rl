@@ -1,3 +1,7 @@
+# WARNING
+
+This branch has been deprecated and may be deleted at any time
+
 # mvfst-rl
 
 `mvfst-rl` is a framework for network congestion control in the QUIC transport protocol
